@@ -1,6 +1,9 @@
-# driftpy examples
+# overview.md
 
-examples to interact with drift protocol-v2 using python sdk
+See above for more current progress and a more detailed project breakdown
+
+The following program is a sample market making strategy using the driftpy examples repo as its starting point. 
+This program interacts with drift protocol-v2 using python sdk
 
 dependencies: [driftpy](https://drift-labs.github.io/driftpy/)
 
