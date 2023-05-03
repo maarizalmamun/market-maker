@@ -16,9 +16,17 @@ pip install -r requirements.txt
 
 ## Quick Run
 
-can either use `--keypath` flag or run `export ANCHOR_WALLET=path/to/id.json` for key
+It is assumed ANCHOR_WALLET=path/to/id.json already configured.
 
+Running the following command
+posts one maker order of 0.1 for SOL-PERP on devnet (default) with main account. (floating_maker.py has been modified to not require any other inputs)
+input from user.
 
+```
+python floating_maker_simplified.py
+```
+
+Original still runs as intended.
 post two maker orders for SOL-PERP on devnet (default) with main account (default)
 
 ```
