@@ -15,6 +15,11 @@ from driftpy.clearing_house import ClearingHouse
 from driftpy.constants.numeric_constants import BASE_PRECISION, PRICE_PRECISION
 from borsh_construct.enum import _rust_enum
 
+import re
+import extractkey
+from dotenv import load_dotenv
+load_dotenv()
+
 @_rust_enum
 class PostOnlyParams:
     NONE = constructor()
@@ -48,8 +53,15 @@ async def main(
     spread = .01,
     offset = 0,
 ):
-    with open(os.path.expanduser(keypath), 'r') as f: secret = json.load(f) 
-    kp = Keypair.from_secret_key(bytes(secret))
+    with open(os.path.expanduser(keypath), 'r') as f: secret = json.load(f)
+    
+    #Check if private key is base64 or base58. Extract key accordingly
+    base58check = re.compile('[g-zG-Z]')
+    is_base58 = base58check.search(secret['secretKey']) 
+
+    #Base58 calls helper function to convert to Base64. Else handle accordingly 
+    if is_base58: kp = Keypair.from_secret_key(extractkey.get_base64_key(secret['secretKey']))
+    else: kp = Keypair.from_secret_key(bytes(secret))
     print('using public key:', kp.public_key, 'subaccount=', subaccount_id)
     config = configs[env]
     wallet = Wallet(kp)
@@ -103,12 +115,12 @@ async def main(
     if is_perp:
         perp_orders_ix = [
             await drift_acct.get_place_perp_order_ix(bid_order_params, subaccount_id),
-            await drift_acct.get_place_perp_order_ix(ask_order_params, subaccount_id)
+            #await drift_acct.get_place_perp_order_ix(ask_order_params, subaccount_id)
             ]
     else:
         spot_orders_ix =  [
             await drift_acct.get_place_spot_order_ix(bid_order_params, subaccount_id),
-            await drift_acct.get_place_spot_order_ix(ask_order_params, subaccount_id)
+            #await drift_acct.get_place_spot_order_ix(ask_order_params, subaccount_id)
         ]
 
     await drift_acct.send_ixs(
