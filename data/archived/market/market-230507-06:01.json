@@ -1,0 +1,17 @@
+{
+    "oracle_price": 22.031967,
+    "has_sufficient_number_of_datapoints": true,
+    "last_oracle_price": 22.031967,
+    "last_oracle_price_twap": 22.033371,
+    "last_mark_price_twap": 22.037254,
+    "last_bid_price_twap": 22.037231,
+    "last_ask_price_twap": 22.037278,
+    "last_funding_rate": 0.005618916,
+    "last24h_avg_funding_rate": 0.008703562,
+    "volume24h": 3126073708,
+    "oracle_std": 0.001404,
+    "mark_std": 0.873613,
+    "base_spread": 3e-7,
+    "long_spread": 47131,
+    "short_spread": 369
+}

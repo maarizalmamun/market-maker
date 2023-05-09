@@ -1,0 +1,15 @@
+{
+  "name": "handle_dlob",
+  "version": "1.0.0",
+  "description": "\"Interface with Drifts Javascript SDK to fetch DLOB data\"",
+  "main": "loadDLOB.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@drift-labs/sdk": "^2.28.0-beta.2"
+  },
+  "type": "module"
+}

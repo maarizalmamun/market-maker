@@ -1,0 +1,8 @@
+{
+    "user_position": null,
+    "user_leverage": 0,
+    "total_collateral": 0,
+    "free_collateral": 0,
+    "unrealized_pnl": 0,
+    "perp_liability": 0
+}

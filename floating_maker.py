@@ -15,8 +15,9 @@ from driftpy.clearing_house import ClearingHouse
 from driftpy.constants.numeric_constants import BASE_PRECISION, PRICE_PRECISION
 from borsh_construct.enum import _rust_enum
 
+from src.utils import extractKey
 import re
-import extractkey
+#from extractkey import extractKey
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -25,6 +26,20 @@ class PostOnlyParams:
     NONE = constructor()
     TRY_POST_ONLY = constructor()
     MUST_POST_ONLY = constructor()
+
+def extractKey(base58str) -> bytes:
+    """
+    Private Key: TypeConversion from (base58,string) to (base64, bytes)
+
+    Args:
+        base58str (str): The private key as a base58 encoded string.
+
+    Returns:
+        bytes: The private key as a base64 encoded bytes.
+    """    
+    from solders.keypair import Keypair
+    kp = Keypair.from_base58_string(base58str)
+    return kp.__bytes__()
 
 def order_print(orders: list[OrderParams], market_str=None):
     for order in orders:
@@ -60,7 +75,7 @@ async def main(
     is_base58 = base58check.search(secret['secretKey']) 
 
     #Base58 calls helper function to convert to Base64. Else handle accordingly 
-    if is_base58: kp = Keypair.from_secret_key(extractkey.get_base64_key(secret['secretKey']))
+    if is_base58: kp = Keypair.from_secret_key(extractKey(secret['secretKey']))
     else: kp = Keypair.from_secret_key(bytes(secret))
     print('using public key:', kp.public_key, 'subaccount=', subaccount_id)
     config = configs[env]

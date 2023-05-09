@@ -1,2 +1,5 @@
 venv/
 .env
+sample_mm.py
+zdeleted/
+src/__pycache__/
