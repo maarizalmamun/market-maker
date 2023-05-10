@@ -45,7 +45,7 @@ class DriftClient:
     A class representing a client for the Drift Protocol. Handles interactions with the API.
 
     Attributes:
-        acct (ClearingHouse): An API object for interacting with the Drift Protocol.
+        drift_acct (ClearingHouse): An API object for interacting with the Drift Protocol.
         chu (ClearingHouseUser): An object representing a user of the Drift Protocol.
         default_order (OrderParams): The default order parameters for the client.
         orders (Orders): An object for managing orders on the exchange.
@@ -74,10 +74,10 @@ class DriftClient:
         connection = AsyncClient(URL)
         provider = Provider(connection, wallet)
         drift_acct = ClearingHouse.from_config(config, provider)
-        self.acct = drift_acct
+        self.drift_acct = drift_acct
         self.chu = ClearingHouseUser(drift_acct, use_cache=True)
         self.default_order = MMOrder().orderparams
-        self.orders = Orders(self.acct)
+        self.orders = Orders(self.drift_acct)
         params = get_market_parameters(MARKET_NAME)
         self.market_index = params['market_index']
         print("Initializing Drift client...")
@@ -96,21 +96,21 @@ class DriftClient:
         console_line()
         if printkeys:
             print("Engaging the following accounts in a new Market Maker:")   
-            print("Authority:     ", self.acct.authority)
-            print("(Global) State:", self.acct.get_state_public_key())
-            print("User Stats:    ", self.acct.get_user_stats_public_key())
-            print("User Account:  ", self.acct.get_user_account_public_key())
+            print("Authority:     ", self.drift_acct.authority)
+            print("(Global) State:", self.drift_acct.get_state_public_key())
+            print("User Stats:    ", self.drift_acct.get_user_stats_public_key())
+            print("User Account:  ", self.drift_acct.get_user_account_public_key())
             print("Perp Market Account:", get_perp_market_public_key(
-                self.acct.program_id, self.market_index))
+                self.drift_acct.program_id, self.market_index))
         console_line()
         if return_obj:
             accountkeys = {}
-            accountkeys['authority'] = self.acct.authority
-            accountkeys['state_account'] = self.acct.get_state_public_key()
-            accountkeys['user_stats_account'] = self.acct.get_user_stats_public_key()
-            accountkeys['user_account'] = self.acct.get_user_account_public_key()
+            accountkeys['authority'] = self.drift_acct.authority
+            accountkeys['state_account'] = self.drift_acct.get_state_public_key()
+            accountkeys['user_stats_account'] = self.drift_acct.get_user_stats_public_key()
+            accountkeys['user_account'] = self.drift_acct.get_user_account_public_key()
             accountkeys["perp_market"] = get_perp_market_public_key(
-                self.acct.program_id,self.market_index)
+                self.drift_acct.program_id,self.market_index)
         return accountkeys
 
     async def fetch_chu_data(self):
@@ -186,7 +186,7 @@ class DriftClient:
         """
         perp_market = await get_perp_market_account(self.chu.program, self.market_index)
         amm = perp_market.amm
-        oracle_data = await get_oracle_data(self.acct.program.provider.connection, amm.oracle)
+        oracle_data = await get_oracle_data(self.drift_acct.program.provider.connection, amm.oracle)
         
         perp_data = {
             "oracle_price": oracle_data.price,
@@ -306,7 +306,7 @@ class Orders:
 
     async def user_margin_enabled(self) -> bool:
         """ Check if margin trading enabled"""
-        user = await self.acct.get_user()
+        user = await self.drift_acct.get_user()
         return user.is_margin_trading_enabled
 
 def get_market_parameters(market_name: str):

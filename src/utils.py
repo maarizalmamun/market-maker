@@ -370,37 +370,26 @@ def choose_strategy() -> str:
     print('Strategies:\n Choose one of the following strategies')
     i = 0
     strategy_files = []
-    # Add all non cache files to list
+    # File exclusion list, print remaining files
     for filename in os.listdir(path):
         if "cache" not in filename and "init" not in filename:
-            # Exclude above file types
             strategy_files.append(filename)
         if "default" in filename:
             default_file = filename 
-    # Print available strategies
     for i, filename in enumerate(strategy_files):
         print(f"{i+1}. {filename}")
-    # User prompt
     selection = input("Select strategy # to implement (Press any key for default): ")
     # Check for out of scope inputs, set to default
     if not selection.isdigit() or int(selection) < 1 or int(selection) > len(strategy_files):
         filename = default_file
     else: 
         filename = strategy_files[int(selection)-1]
-    # Loading strategy
+    filename = default_file
     print(f'Loading strategy...: {filename}')
-    # Import the selected strategy class
     module_name = filename[:-3]  # Remove ".py" extension
     module = importlib.import_module(f'strategies.{module_name}')
     strategy_class = getattr(module, 'DefaultStrategy')
-
     return strategy_class
-
-    # Create an instance of the selected strategy class and execute it
-    strategy_instance = strategy_class()
-    strategy_instance.execute()
-
-    os.system(f"python {path}/{filename}")
 
 def update_prices(orders: list[dict]) -> list[dict]:
     """

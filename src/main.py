@@ -75,31 +75,19 @@ async def main():
             break
 
         # Fetch and Format data, and sleep as a batched task to align computational calculation time
-        dlob_data, user_data, market_data = await collect_and_format_data(driftclient, storage_maxed)
+        dlob_data, user_data, market_data = await collect_and_format_data(driftclient.drift_acct, storage_maxed)
         
-
-
-
-        # Create an instance of the selected strategy class and execute it
+        # Initialize Market Maker Algorithm
         console_line()
         strategy_instance = choose_strategy()(dlob_data,user_data,market_data,
-                driftclient.acct.get_user_account_public_key())
-        print("Strategy begins!")
-        # Initialized Market Maker
-        strategy_instance.trade()
+            driftclient.drift_acct,driftclient.drift_acct.get_user_account_public_key())
 
+        print("Market Maker Activated - Beginning Selected Market Making Strategy")
         marketMakerOrders = strategy_instance.trade()
-        orderslist = Orders(driftclient.acct)
-        for order in marketMakerOrders:
-            orderslist.add_order(order)
-        # Send txs
-        
-        await orderslist.send_orders()
+        await marketMakerOrders.send_orders()
 
         if DEV_MODE or stop:
             break
-
-
 
     print("Program Completes!")
 
