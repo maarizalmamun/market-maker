@@ -21,8 +21,7 @@ pip install -r requirements.txt
 ## Quick Run
 
 It is assumed ANCHOR_WALLET=path/to/id.json already configured.
-
-There are 3 pathways in the program, the main one is in - yup the main folder. 
+If not, find your private key and place it in a .env file in the root directory.
 
 Running the following command and you will be prompted to choose between running from different strategies in src/strategies. You will be prompted to select a number but any key diverts to default, the only implemented (for now)
 ```
@@ -37,7 +36,6 @@ programs/drift/src/state/spot_market_map.rs:35, where it should instead come fro
 programs/drift/src/state/perp_market_map.rs:70 -> return Error(ErrorCode::SpotMarketNotFound);
 found at
 programs/drift/src/math/margin.rs:554
-```
 Run:
 ```
 python floating_maker_simplified.py
