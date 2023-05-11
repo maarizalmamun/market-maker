@@ -52,12 +52,12 @@ class DriftClient:
         market_index (int): The index of the market being traded.
     """
 
-    def __init__(self):
+    def __init__(self, keypath: str):
         """
         Initializes a DriftClient object.
         """
 
-        keypath = os.environ.get('ANCHOR_WALLET')
+        #keypath = os.environ.get('ANCHOR_WALLET')
         with open(os.path.expanduser(keypath), 'r') as f: secret = json.load(f) 
         
         # Check if private key is of type base64 or base58
@@ -93,16 +93,16 @@ class DriftClient:
         Returns:
             dict: A dictionary containing public keys of relevant engaged accounts.
         """        
-        console_line()
         if printkeys:
-            print("Engaging the following accounts in a new Market Maker:")   
-            print("Authority:     ", self.drift_acct.authority)
-            print("(Global) State:", self.drift_acct.get_state_public_key())
-            print("User Stats:    ", self.drift_acct.get_user_stats_public_key())
-            print("User Account:  ", self.drift_acct.get_user_account_public_key())
+            console_line()
+            print("Engaging the following accounts in new Market Maker:")   
+            print("Authority:          ", self.drift_acct.authority)
+            print("Global State:       ", self.drift_acct.get_state_public_key())
+            print("User Stats:         ", self.drift_acct.get_user_stats_public_key())
+            print("User Account:       ", self.drift_acct.get_user_account_public_key())
             print("Perp Market Account:", get_perp_market_public_key(
                 self.drift_acct.program_id, self.market_index))
-        console_line()
+            console_line()
         if return_obj:
             accountkeys = {}
             accountkeys['authority'] = self.drift_acct.authority
@@ -115,18 +115,23 @@ class DriftClient:
 
     async def fetch_chu_data(self):
         """Fetches all required Drift data.
-
         Returns:
-            Dict: A dictionary containing user data and market data.
+            list[dict]: 2 dictionaries containing user data and market data.
         """        
         await self.chu.set_cache()
-        coroutines = [self.fetch_user(), self.fetch_market()]
-        # Batched asyncronous tasks
-        user_data, market_data = await asyncio.gather(*coroutines)
+        # Batch asyncronous tasks (Reduce execution time)
+        coroutines = [self.chu.get_total_collateral(), self.chu.get_total_perp_liability(),
+        self.chu.get_unrealized_pnl(), self.chu.get_user_position(self.market_index),
+        get_perp_market_account(self.chu.program, self.market_index)
+        ]
+        total_collateral, liability, unrealized_pnl, user_position, perp_market = await asyncio.gather(*coroutines)
+        oracle_data = await get_oracle_data(self.drift_acct.program.provider.connection, perp_market.amm.oracle)
+        # Extract data from fetch calls to desires format for processing
+        user_data = self.extract_user_data(total_collateral, liability, unrealized_pnl, user_position)
+        market_data = self.extract_market_data(perp_market, oracle_data)
         return user_data, market_data
 
-
-    async def fetch_user(self) -> dict:
+    def extract_user_data(self, total_collateral, liability, unrealized_pnl, user_position) -> dict:
         """
         Fetches user trade data, including total collateral, perp 
         liability, unrealized profit and loss, and user position
@@ -140,32 +145,20 @@ class DriftClient:
             - 'unrealized_pnl' (float): The user's unrealized profit or loss.
             - 'perp_liability' (float): The user's perp liability.
         """
-        # Batch asyncronous tasks (Reduce execution time)
-        tasks = [
-        self.chu.get_total_collateral(),
-        self.chu.get_total_perp_liability(),
-        self.chu.get_unrealized_pnl(),
-        self.chu.get_user_position(self.market_index)
-        ]
-        total_collateral, liability, unrealized_pnl, 
-        user_position = await asyncio.gather(*tasks)
-        
-        # Calculate what can be derived from above
         free_collateral = total_collateral - liability
         if total_collateral == 0: user_leverage = 0
-        else: user_leverage = total_collateral * 10_000 / total_collateral
-        # Create dictionary
+        else: user_leverage = liability * 10_000 / total_collateral
+
         user_data = {"user_position": user_position, "user_leverage": user_leverage,
             "total_collateral": total_collateral, "free_collateral": free_collateral,
-             "unrealized_pnl": unrealized_pnl, "perp_liability": liability}
+             "unrealized_pnl": unrealized_pnl, "perp_liability": liability
+        }
         return user_data
 
-    async def fetch_market(self) -> Dict:
+    def extract_market_data(self, perp_market, oracle_data) -> dict:
         """Returns a dictionary containing useful market data from a PerpMarket object.
-
         Args:
             None.
-
         Returns:
             Dict: A dictionary containing selected data from the PerpMarket object.
                 - oracle_price (float): The current oracle price.
@@ -183,6 +176,26 @@ class DriftClient:
                 - base_spread (float): The spread between the base asset and the oracle price.
                 - long_spread (float): The spread for long positions.
                 - short_spread (float): The spread for short positions.
+        """
+        amm = perp_market.amm
+        perp_data = {
+            "oracle_price": oracle_data.price,
+            "has_sufficient_number_of_datapoints": oracle_data.has_sufficient_number_of_datapoints,
+            "last_oracle_price": amm.historical_oracle_data.last_oracle_price,
+            "last_oracle_price_twap": amm.historical_oracle_data.last_oracle_price_twap,
+            "last_mark_price_twap": amm.last_mark_price_twap,
+            "last_bid_price_twap": amm.last_bid_price_twap,
+            "last_ask_price_twap": amm.last_ask_price_twap,
+            "last_funding_rate": amm.last_funding_rate,
+            "last24h_avg_funding_rate": amm.last24h_avg_funding_rate,
+            "volume24h": amm.volume24h,
+            "oracle_std": amm.oracle_std,
+            "mark_std": amm.mark_std,
+            "base_spread": amm.base_spread,
+            "long_spread": amm.long_spread,
+            "short_spread": amm.short_spread
+        }        
+        return perp_data
         """
         perp_market = await get_perp_market_account(self.chu.program, self.market_index)
         amm = perp_market.amm
@@ -205,7 +218,7 @@ class DriftClient:
             "long_spread": amm.long_spread,
             "short_spread": amm.short_spread
         }
-        return perp_data
+        """
 
 class MMOrder:
     """Represents an order that has been placed on the exchange.
@@ -270,9 +283,10 @@ class Orders:
         orders (List[MMOrder]): The list of orders to send in a transaction
     """
 
-    def __init__(self, drift_acct: ClearingHouse):
+    def __init__(self, drift_acct: ClearingHouse, oracle_price: float=20.0):
         self.drift_acct = drift_acct
         self.orders = []
+        self.oracle_price = oracle_price
         
     def add_order(self, order: MMOrder):
         self.orders.append(order)
@@ -290,19 +304,22 @@ class Orders:
         ] + orders_ix
     )
 
-    def order_print(orders: list[MMOrder], market_str=None):
+    def order_print(self):
         """ Print orders to console  """
-        for mm_order in orders:
+        print("Oracle Price: ", self.oracle_price)
+        for mm_order in self.orders:
             order = mm_order.orderparams
             if order.price == 0:
                 pricestr = '$ORACLE'
                 if order.oracle_price_offset > 0:
-                    pricestr += ' + '+str(order.oracle_price_offset/1e6)
+                    pricestr += (' + '+str(order.oracle_price_offset/PRICE_PRECISION))
                 else:
-                    pricestr += ' - '+str(abs(order.oracle_price_offset)/1e6)
+                    pricestr += (' - '+str(abs(order.oracle_price_offset)/PRICE_PRECISION))
             else:
                 pricestr = '$' + str(order.price/1e6)
-            print(str(order.direction).split('.')[-1].replace('()',''), market_str, '@', pricestr)
+            print(str(order.direction).split('.')[-1].replace('()',''),
+            f"{order.base_asset_amount/BASE_PRECISION:.3f}", MARKET_NAME, '@', pricestr
+            )
 
     async def user_margin_enabled(self) -> bool:
         """ Check if margin trading enabled"""

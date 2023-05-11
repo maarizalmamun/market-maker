@@ -20,6 +20,7 @@ from borsh_construct.enum import _rust_enum
 
 from driftpy.addresses import *
 from driftpy.accounts import *
+from graph_trade import generate_graph
 
 from driftclient import DriftClient, MMOrder, Orders
 from utils import *
@@ -31,8 +32,6 @@ from strategies import *
 from strategies.mean_reversion import MeanReversion
 from src import *
 from typing import Tuple
-from dotenv import load_dotenv
-load_dotenv()
 
 @_rust_enum
 class PostOnlyParams:
@@ -40,7 +39,7 @@ class PostOnlyParams:
     TRY_POST_ONLY = constructor()
     MUST_POST_ONLY = constructor()
 
-async def main():
+async def main(keypath, consolePrint):
     """Drift Market Maker program that collects market data, 
     executes a trading strategy, and posts orders to the exchange.
 
@@ -62,68 +61,49 @@ async def main():
     3. Exit call
     """
     #1 Initialize connection
-    driftclient = DriftClient()
-    storage_maxed = False
-    condition = False
+    driftclient = DriftClient(keypath)
+    on = True
     buffer = 0
-    start_position = []
-    # Verify correct addresses on Solana devnet
-    user_acc_key = driftclient.get_accounts(True)['user_account'].__str__()
-    #2 Market Maker Begins
-    while True:
-        if condition:
-            break
+    storage_maxed = False
+    total_collateral = []
+    storage = (buffer, storage_maxed, total_collateral)
+    # Display initialized accounts on Solana devnet
+    user_acc_key = driftclient.get_accounts(True,consolePrint)['user_account'].__str__()
+    # Initialize Market Maker Algorithm
+    strategyClass = choose_strategy()
+    #2 Market Maker Loop Begins
+    while on:
 
-        # Fetch and Format data, and sleep as a batched task to align computational calculation time
-        dlob_data, user_data, market_data = await collect_and_format_data(driftclient.drift_acct, storage_maxed)
-        
-        # Initialize Market Maker Algorithm
-        console_line()
-        strategy_instance = choose_strategy()(dlob_data,user_data,market_data,
+        # Fetch, Format, Collect Data
+        dlob_data, user_data, market_data = await collect_and_format_data(driftclient, consolePrint)
+        # Handle data archiving and Graph Generation
+        storage = handle_archives(dlob_data, user_data, market_data, storage)
+        # Load Fetched data to Strategy algorithm
+        strategy = strategyClass(dlob_data,user_data,market_data,
             driftclient.drift_acct,driftclient.drift_acct.get_user_account_public_key())
+        # Calculate order and execute trade according to strategy
+        await make_trade(strategy)
 
-        print("Market Maker Activated - Beginning Selected Market Making Strategy")
-        marketMakerOrders = strategy_instance.trade()
-        await marketMakerOrders.send_orders()
-
-        if DEV_MODE or stop:
+        if DEV_MODE or not on:
             break
-
     print("Program Completes!")
 
-    # Archive Function
-    def handle_archives(storage_frequency: int = COLLECTION_FREQUENCY, 
-        max_files_archived: int = STORAGE_BUFFER) -> None:
-        """Archives dataset containing DLOB, user and market data. The function will check if the
-        number of files has exceeded the maximum limit (storage_maxed) or if it is time to archive 
-        based on the frequency of the trades. Once the number of files has exceeded the maximum limit, 
-        the oldest file in the queue will be deleted. The archive event is triggered every 
-        storage_frequency * TRADING_FREQUENCY seconds. If the buffer is not at maximum capacity, the 
-        program will add the total collateral data point to the start_position list. The dataset will 
-        be appended to the existing archive. If the buffer is at maximum capacity, data will be 
-        overwritten in a first in, first out manner. 
-        
-        Args:
-            storage_frequency (int, optional): The number of trades after which to archive data. Defaults to COLLECTION_FREQUENCY.
-            max_files_archived (int, optional): The maximum number of files to archive. Defaults to STORAGE_BUFFER.
+async def make_trade(strategy):
+    """Execute a trade using the specified strategy.
 
-        Returns:
-            None
-        """
-        print("Trade count: ", buffer, )
-        if buffer % STORAGE_BUFFER == 0 and storage_maxed: 
-            # Oldest archive deleted
-            delete_oldest_archived()
-        # Archive
-        if not DEV: archive_dataset([dlob_data,user_data,market_data])
-        buffer = (buffer+1) % STORAGE_BUFFER
-        print(f"buffer = {buffer}, storage_maxed = {storage_maxed}\n")
-        if buffer == 0 and not storage_maxed: 
-                start_position.append(user_data['total_collateral'])
-        elif buffer == 0: 
-            storage_maxed = True
+    Args:
+        strategy: The strategy object to use for trading.
 
-async def collect_and_format_data(driftclient: DriftClient, trade_freq: int = TRADE_FREQUENCY):
+    """
+    marketMakerOrders = strategy.post_orders()
+    if marketMakerOrders != None:
+        print(marketMakerOrders.order_print())
+        await marketMakerOrders.send_orders()
+    else:
+        print("No new trades to be made.")
+
+
+async def collect_and_format_data(driftclient: DriftClient, consolePrint: bool, trade_freq: int = TRADE_FREQUENCY):
     """ Fetches DLOB, User, and market data dictionaries from 
         Driftpy and Drift Javascript SDK. Data formatted and prepared for trading
         operations. Batches asyncronous retrieval times with trade_freq to 
@@ -147,7 +127,8 @@ async def collect_and_format_data(driftclient: DriftClient, trade_freq: int = TR
     dlob_data, user_data, market_data = format(dlob_data, user_data, market_data)
 
     # Print Data to console
-    print_all_data(dlob_data, user_data, market_data)
+    if (consolePrint):
+        print_all_data(dlob_data, user_data, market_data)
     return (dlob_data, user_data, market_data)
 
 async def fetch(driftclient: DriftClient, trade_freq: int = TRADE_FREQUENCY):
@@ -166,7 +147,7 @@ async def fetch(driftclient: DriftClient, trade_freq: int = TRADE_FREQUENCY):
             - market_data (dict): The market data.
     """
     # Fetch from driftpy
-    coroutines = [driftclient.fetch_chu_data(), asyncio.sleep(t_fq)]
+    coroutines = [driftclient.fetch_chu_data(), asyncio.sleep(trade_freq)]
     data = await asyncio.gather(*coroutines)
     user_data, market_data = data[0]
     # Fetch from Javascript SDK
@@ -192,5 +173,54 @@ def format(dlob_data: dict, user_data: dict, market_data: dict):
     user_data, market_data = make_data_readable([user_data, market_data])
     return (dlob_data, user_data, market_data)
 
+def handle_archives(dlob_data, user_data, market_data, storage, storage_frequency: int = COLLECTION_FREQUENCY) -> None:
+    """Archives dataset containing DLOB, user and market data. The function will check if the
+    number of files has exceeded the maximum limit (storage_maxed) or if it is time to archive 
+    based on the frequency of the trades. Once the number of files has exceeded the maximum limit, 
+    the oldest file in the queue will be deleted. The archive event is triggered every 
+    storage_frequency * TRADING_FREQUENCY seconds. If the buffer is not at maximum capacity, the 
+    program will add the total collateral data point to the total_collateral list. The dataset will 
+    be appended to the existing archive. If the buffer is at maximum capacity, data will be 
+    overwritten in a first in, first out manner. 
+    """
+    buffer, storage_maxed, total_collateral = storage
+
+    # Oldest archive deleted
+    delete_oldest_archived(buffer, storage_maxed)
+    # Archive
+    if DEV_MODE:
+        return
+    else:
+        print(f"TradeCount: {buffer+1}, Data Storage Maxed: {storage_maxed}")
+        if buffer % COLLECTION_FREQUENCY ==0:
+            archive_dataset([dlob_data,user_data,market_data])
+            generate_graph()
+        buffer = (buffer+1) % STORAGE_BUFFER
+        if buffer == 0 and not storage_maxed: 
+                total_collateral.append(user_data['total_collateral'])
+        elif buffer == 0: 
+            storage_maxed = True
+    return (buffer, storage_maxed, total_collateral)
+
 if __name__ == '__main__':
-    asyncio.run(main())
+    import argparse
+    from dotenv import load_dotenv
+    load_dotenv()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--keypath', type=str, required=False, default=os.environ.get('ANCHOR_WALLET'))
+    parser.add_argument('--console', type=str, required=False, default="yes")
+    args = parser.parse_args()
+
+    if args.keypath is None:
+        if os.environ.get['ANCHOR_WALLET'] is None:
+            raise NotImplementedError("need to provide keypath or set ANCHOR_WALLET")
+        else:
+            args.keypath = os.environ.get['ANCHOR_WALLET']
+
+    consolePrint = args.console.lower()
+    if 'n' in args.console.lower() or 'f' in args.console.lower():
+        consolePrint = False
+    else:
+        consolePrint = True
+
+    asyncio.run(main(args.keypath, consolePrint))

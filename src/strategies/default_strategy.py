@@ -1,12 +1,10 @@
+import sys
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List
-
-import sys
 from pathlib import Path
-# Get the absolute path of the directory containing this file
+
 base_path = Path(__file__).resolve().parent
 print(base_path)
-# Add the parent directory (which contains the 'src' directory) to the system path
 sys.path.append(str(base_path.parent))
 # Import the constants module from the 'src' directory
 from src import *
@@ -31,67 +29,56 @@ UPRISK_LEVERAGE = 0.3
 
 #class BaseStrategy(ABC):
 class DefaultStrategy():
-    
-    """Abstract base class for market-making strategy implementations.
-        Initializes a new instance of DefaultStrategy with the given parameters.
+    """
+    Abstract base class for market-making strategy implementations.
 
-    This class defines the interface for a market-making strategy, which must 
-    be implemented by any concrete strategy class. A strategy should implement the `execute` 
-    method, which takes in a set of input data and returns a list of
-    MMOrder objects representing the orders to be placed in the market.
     Args:
-        address (str): The address of the strategy.
         dlob_data (list[dict]): The data for the DLOB.
-        user_data (dict[str,Any]): The user account data on the exchange
-        market_data (dict[str,Any]): The market data on the exchange for the given trading pair
-        drift_acct(DriftClient): A DriftClient Object for interacting with the driftpy client for posting trades
-        accaddress(str): User account public address
-        custom_signals(Any): Any custom signal parameters for optional extendible market making data
- 
-    Attributes:
-        market_data (dict): A dictionary containing market data, including the current price, 
-        the order book, and other relevant information. It includes the following keys:
-        - 'price': (float) the current market price
-        - 'orderbook': (dict) the order book with bids and asks at different prices
-        - 'last_price': (float) the last traded price
-        - 'timestamp': (int) the timestamp of the data
-        - other keys with additional market data such as volume and volatility
-        user_data (dict): A dictionary containing user account data, 
-        including the user's balance, position, and other relevant information. It includes the following keys:
-        - 'balance': (float) the user's account balance
-        - 'position': (float) the user's current position
-        - 'leverage': (float) the user's current leverage
-        - 'max_position_size': (float) the maximum position size the user is allowed to take
-        - other keys with additional user data
-        dlob_data (dict): A dictionary containing the Decentralized Limit 
-          - 'best_bid': A float representing the highest bid in the orderbook
-        - 'best_ask': A float representing the lowest ask in the orderbook
-        - 'long_orderbook': A dictionary representing the long orderbook, with the following keys:
-            - 'price': A float representing the price of the order
-            - 'quantity': A float representing the quantity of the order
-            - 'cumulative_quantity': A float representing the cumulative quantity of all orders at or below the current price
-        - 'short_orderbook': A dictionary representing the short orderbook, with the same keys as 'long_orderbook'
-        - 'long_orders': A list of dictionaries representing the top long orders, with the following keys:
-            - 'orderId': A string representing the ID of the order
-            - 'direction': A string representing the direction of the order ('long' or 'short')
-            - 'price': A float representing the price of the order
-            - 'baseAssetAmount': A float representing the quantity of the order
-            - 'oracle_price': A float representing the oracle price of the order
-            - 'oraclePriceOffset': A float representing the offset from the oracle price of the order
-        - 'short_orders': A list of dictionaries representing the top short orders, with the same keys as 'long_orders'
-        orderbook_levels (int): The number of levels to use when retrieving 
-        order book data. If set to 0, only the best bid and ask prices 
-        will be used. If set to -1, all available levels will be used.
-        custom_signals (Any): For expanding to new strategies outside of current data scope
-        strat_complexity list[bool]: Initialized strat_complexity
+        user_data (dict[str,Any]): The user account data on the exchange.
+        market_data (dict[str,Any]): The market data on the exchange for the given trading pair.
+        drift_acct(DriftClient): A DriftClient Object for interacting with the driftpy client for posting trades.
+        accaddress(str): User account public address.
+        custom_signals(Any): Any custom signal parameters for optional extendible market making data.
 
-        Methods:
-        execute: Abstract method to be implemented by concrete strategy classes. Takes in the market data, user data, 
-            and DLOB data and returns a list of MMOrder objects representing the orders to be placed in the market.
+    Attributes:
+        dlob_data (list[dict]): A dictionary containing the Decentralized Limit Order Book (DLOB) data.
+        user_data (dict[str,Any]): A dictionary containing user account data.
+        market_data (dict[str,Any]): A dictionary containing market data.
+        drift_acct(DriftClient): A DriftClient object for interacting with the Drift API.
+        custom_signals(Any): Any custom signal parameters for optional extendible market making data.
+        strat_complexity (int): The complexity of the strategy.
+
+    Methods:
+        get_userpositions: Get user's long and short positions.
+        calculate_risk: Calculate the current level of risk.
+        calculate_funding_adjustment: Calculate the funding adjustment factor.
+        calculate_skew_factor: Calculate the skew factor.
+        calculate_aggression_factor: Calculate the aggression factor.
+        calculate_ordersize: Calculate the order size.
+        calculate_order_params: Calculate the order parameters.
+        post_orders: Post orders on the market.
+        emergency_market_order_condition: Check if an emergency market order condition is met.
     """
 
-    def __init__(self, dlob_data: List[Dict[str, Any]], user_data: Dict[str, Any], 
-                 market_data: Dict[str, Any], drift_acct: DriftClient, accaddress: 'str', custom_signals: Any = None):
+    def __init__(
+    self,
+    dlob_data: List[Dict[str, Any]],
+    user_data: Dict[str, Any],
+    market_data: Dict[str, Any],
+    drift_acct: DriftClient,
+    accaddress: str,
+    custom_signals: Any = None,
+    ):
+        """Initializes a new instance of DefaultStrategy with the given parameters.
+        
+        Args:
+            dlob_data (List[Dict[str, Any]]): The data for the DLOB.
+            user_data (Dict[str, Any]): The user account data on the exchange.
+            market_data (Dict[str, Any]): The market data on the exchange for the given trading pair.
+            drift_acct (DriftClient): A DriftClient object for interacting with the driftpy client for posting trades.
+            accaddress (str): User account public address.
+            custom_signals (Any): Any custom signal parameters for optional extendible market making data.
+        """
         self.dlob_data = dlob_data
         self.user_data = user_data
         self.market_data = market_data
@@ -131,7 +118,7 @@ class DefaultStrategy():
         """Get user's long and short positions
         
         Returns:
-            user_positions: list[float]: User open order Bid and Asks, quantity and amount
+            List[float]: User open order Bid and Asks, quantity and amount
                 [num_long_trades,num_short_trades],[sum_long_trades, sum_short_trades]
         """
         if self.activeTrades == False:
@@ -151,12 +138,12 @@ class DefaultStrategy():
             return [user_order_count, user_order_size]  
 
     def calculate_risk(self) -> float:
-        """Calculate current positions level of risk based on given risk management parameters
+        """
+        Calculate current position's level of risk based on given 
+        risk management parameters
+        
         Returns:
-            - risk (float): Current position % to max risk threshold
-            goal[0.3,0.8]. Under 1 in normal circumstances. 
-            Thresholds in default case work to keep this under 0.8 and 
-            increase order aggression when below 0.3. 
+            float: Current position % to max risk threshold (goal[0.3,0.8])
         """
         risk =  max(self.current_leverage/self.levcap, self.total_collateral/self.targetcap)      
         print("risk is: ", risk)
@@ -166,9 +153,8 @@ class DefaultStrategy():
         """Main factor to determine which way position skew lies
         
         Returns:
-            adjustment_factor (int): 
-            Positive indicates funding favours shorts
-            Negative indicates funding favours longs
+            int: Positive indicates funding favors shorts,
+                 Negative indicates funding favors longs.
         """
         if self.funding_rate > 0 and self.oracle_price < self.mark_price:
             return 1.0
@@ -182,11 +168,11 @@ class DefaultStrategy():
             return 0.0
 
     def calculate_skew_factor(self) -> float:
-        """Calculates skew that can vary from -1 to 1
-            In our case it ranges from -0.5 to 0.5 (Can't ever have only one sided only order placement)
+        """Calculates skew that can vary from -1 to 1.
+           In our case, it ranges from -0.5 to 0.5.
+        
         Returns:
-            - maxrisk (float): goal[0.3,0.8]. Under 1 in normal circumstances. Thresholds in base 
-                case work to keep this under 0.8 and increase order aggression when below 0.3. 
+            float: Skew value between -0.5 and 0.5.
         """
         # Funding adjustment
         skew = float(calculate_funding_adjustment()) * 0.25
@@ -202,11 +188,9 @@ class DefaultStrategy():
 
     def calculate_aggression_factor(self) -> list[float]:
         """Calculate aggression based on the current state of the market.
-        In base case hardcoded to be 0.8,1.01 favouring spread
-             to funding rate. Verify by evaluating order book depth + max/min
-
-            Returns: list[float]: [bid,ask]
-        self.agg * self.agg_skew[0] or [1]
+        
+        Returns:
+            list[float]: Aggression factors for bid and ask orders.
         """
         funding = self.funding_rate
         if (self.risk < self.uprisk):
@@ -232,8 +216,11 @@ class DefaultStrategy():
                 return [1.0,2.0]    
 
     def calculate_ordersize(self) -> list[float,float]:
-        """ Use parabolic spacing. Target - Current, (Target - Current)*2 """
-        """Get user's long and short positions"""
+        """Use parabolic spacing to calculate order sizes.
+        
+        Returns:
+            list[float, float]: Sizes for long and short orders.
+        """
         if self.activeTrades == False:
             return [self.targetcap, self.targetcap]
         user_order_count = [0,0]
@@ -251,7 +238,7 @@ class DefaultStrategy():
         user_positions = self.get_userpositions()
         sum_long_trades = user_positions[1][0]
         sum_short_trades = user_positions[1][1]
-
+        
         # Calculate Target Size - Active Trade sum with skew adjustment
         skew = calculate_skew_factor() 
         base_target_long = (self.targetcap - sum_long_trades)*(1.0 + skew)
@@ -260,7 +247,11 @@ class DefaultStrategy():
         return [base_target_long, base_target_short]
 
     def calculate_order_params(self) -> list[list[float]]:
-        """Calculate the spacing between the orders to be posted on the market."""
+        """Calculate the spacing between the orders to be posted on the market.
+        
+        Returns:
+            list[list[float]]: Order sizes and offsets for bid and ask orders.
+        """        
         bidagg = self.agg * self.calculate_aggression_factor()[0]
         askagg = self.agg * self.calculate_aggression_factor()[1]        
         if(self.activeTrades == False):
@@ -281,7 +272,7 @@ class DefaultStrategy():
         counter = 1
         base_target_long = self.calculate_ordersize()[0]
         base_target_short = self.calculate_ordersize()[1]
-        print(f"bidnum = {bidnum}, asknum = {asknum}")
+        print(f"Number of long Orders: = {bidnum}, Number of Short Orders: = {asknum}")
         denominator = 0
         for i in range(1, bidnum+1):
             denominator += i        
@@ -301,62 +292,40 @@ class DefaultStrategy():
             bid_sizes[b] = base_target_long * bid_sizes[b]
         for a in range(asknum):
             ask_sizes[a] = base_target_short * ask_sizes[a]
-        return[[bid_sizes,bid_offsets],[ask_sizes,ask_offsets]]
-        # Make orders
+        return[[bid_sizes,bid_offsets],[ask_sizes,ask_offsets]]  
 
-    def trade(self):
-        if not self.activeTrades:
-            return self.first_trade()
-        else:
-            return self.post_orders()   
-
-    def post_orders(self) -> list[float]:    
-        """Post orders on the market. Returns a list of orders."""
-        # Get order details from algorithm
+    def post_orders(self) -> Orders:    
+        """Post orders on the market. Returns a list of orders.
+        
+        Returns:
+            Orders: An instance of the Orders class representing the orders to be placed.
+        """        
         buy_order_params, sell_order_params = self.calculate_order_params()
+        if len(buy_order_params[0]) == 0:
+            return None
+        else:
         # Create Orders Object to prepare order placement
-        orders = Orders(self.drift_acct)
-        for i in range(len(buy_order_params[0])):
-            base_amt = buy_order_params[0][i]
-            offset = buy_order_params[1][i]
-            order = MMOrder(direction=PositionDirection.LONG(),
-            order_size=base_amt,offset=offset)
-            orders.add_order(order)
-        for i in range(len(sell_order_params[0])):
-            base_amt = sell_order_params[0][i]
-            offset = -sell_order_params[1][i]
-            order = MMOrder(direction=PositionDirection.SHORT(),
-            order_size=base_amt,offset=offset)
-            orders.add_order(order)
-        return orders
-      
-    def first_trade(self) -> Orders:
-        """Place the initial orders to be executed by the market maker. Returns the orders. """
-        orderlist = [(MMOrder(direction=PositionDirection.SHORT(), 
-            order_size=(self.targetcap/2), 
-            offset=AGGRESSION/2)),
-        (MMOrder(direction=PositionDirection.SHORT(),
-            order_size=(self.targetcap/3), 
-            offset=AGGRESSION/3)),
-        (MMOrder(direction=PositionDirection.SHORT(),
-            order_size=(self.targetcap/6), 
-            offset=AGGRESSION/6)),
-        (MMOrder(direction=PositionDirection.LONG(),
-            order_size=(self.targetcap/2), 
-            offset=AGGRESSION/2)),
-        (MMOrder(direction=PositionDirection.LONG(),
-            order_size=(self.targetcap/3), 
-            offset=AGGRESSION/3)),
-        (MMOrder(direction=PositionDirection.LONG(),
-            order_size=(self.targetcap/6), 
-            offset=AGGRESSION/6))]
-        orders = Orders(self.drift_acct)
-        print("orderlist", orderlist)
-        for i, order in enumerate(orderlist):
-            orders.add_order(order)
-        print((orders.orders[0].orderparams))
-        return orders
-
-    def emergency_market_order_condition(bool):
+            orders = Orders(self.drift_acct, self.oracle_price)
+            """Order class initialized with instance of ClearingHouse"""
+            for i in range(len(buy_order_params[0])):
+                base_amt = buy_order_params[0][i]
+                offset = buy_order_params[1][i]
+                order = MMOrder(direction=PositionDirection.LONG(),
+                order_size=base_amt,offset=offset)
+                orders.add_order(order)
+            for i in range(len(sell_order_params[0])):
+                base_amt = sell_order_params[0][i]
+                offset = -sell_order_params[1][i]
+                order = MMOrder(direction=PositionDirection.SHORT(),
+                order_size=base_amt,offset=offset)
+                orders.add_order(order)
+            return orders
+        
+    def emergency_market_order_condition(self) -> bool:
+        """Check if an emergency market order condition is met.
+        
+        Returns:
+            bool: True if the condition is met, False otherwise.
+        """
         if self.risk > 0.9:
             return True

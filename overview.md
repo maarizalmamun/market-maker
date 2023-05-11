@@ -22,17 +22,14 @@ market_maker/
 |   |   |-- user/
 |   |   |-- |-- user-230507-01:47.json
 |   |   |-- ...
-|   |   |-- dlob.json
-|   |-- __init__.py
-|   |-- archives.py
-|   |-- dlob.py
-|   |-- market.py
-|   |-- user.py
+|   |-- dlob.json
+|   |-- trading_result_graph.png
 |-- js_src/
 |   |-- handle_dlob.js
 |-- src/
 |   |-- __init__.py
 |   |-- driftclient.py
+|   |-- graph_trade.py
 |   |-- main.py
 |   |-- utils.py
 |   |-- strategies/
@@ -61,7 +58,8 @@ strategy template for all strategies to follow)
 9. src/strategies/__init__.py: Implements the core features for implementing market making algorithms of various complexities. The baseline risk management parameters and trade strategy constant variables are set here and extended/modified in the actual strategy.py files.
 9. src/data/dlob.json: Contains the live most recently pulled dlob data from the Javascript SDK
 10. src/data/archived/: Directory contains archived data of dlob,market_data, and user_data. Archived according to trade parameters set in 
-src/__init__.py
+11. src.graph_trade.py: Creates a graph of current user collateral and compares to pnl from trade
+                        Stored in data/ttrading_result_graph.png
 
 ## 2. Implemented Algorithms
 
@@ -97,64 +95,17 @@ After the beginning stages of this project with modularity in mind the goal was 
 1. Interactions with driftpy SDK 
 2. Interacting and receiving information from the Javascript SDK for Protocol v2.
 3. A market making framework that could take in more complex strategies just through extending a default BaseStrategy abstract class. Scalability on both strategy implemention and exchange connections but especially on the MM side. The framework for creating more dynamic strategies has been implemented (past the bug fixes) and outlined in src/strategies/__init__.py.
-5. Identified a bug in the rust SDK that prevented placing orders on the PERP market through the SDK. (See below for snippet. Not getting past this is the only unimplemented feature left, but everything else has been tested and verified for functionality)
-
+4. Plot trading results to data/trading_result_graph.png
 ### 3.2 Update on Bug
-Issue identified at programs/drift/src/math/margin.rs:554
+Resolved at programs/drift/src/math/margin.rs:554
 with wrong object is being passed: spot_market_map instead of perp_market_map.
-```rust
+Issue was: Insufficient Collateral required deposit
+
+Current Error:
+
+```lua
 ```
-programs/drift/src/math/margin.rs:554
-
-let quote_spot_market = spot_market_map.get_ref(&market.quote_spot_market_index)?;
-
-In the function:
-
-pub fn calculate_margin_requirement_and_total_collateral_and_liability_info(
-    user: &User,
-    perp_market_map: &PerpMarketMap,
-    margin_requirement_type: MarginRequirementType,
-    spot_market_map: &SpotMarketMap,
-    oracle_map: &mut OracleMap,
-    margin_buffer_ratio: Option<u128>,
-    strict: bool,
-){
-    ...
-    ...
-    for market_position in user.perp_positions.iter() {
-    if market_position.is_available() {
-        continue;
-    }
-
-    let market = &perp_market_map.get_ref(&market_position.market_index)?;
-
-    let (quote_oracle_price, quote_oracle_twap) = {
-        let quote_spot_market = spot_market_map.get_ref(&market.quote_spot_market_index)?;
-        let (quote_oracle_price_data, quote_oracle_validity) = oracle_map
-            .get_price_data_and_validity(
-                &quote_spot_market.oracle,
-                quote_spot_market
-                    .historical_oracle_data
-                    .last_oracle_price_twap,
-            )?;
-
-        all_oracles_valid &=
-            is_oracle_valid_for_action(quote_oracle_validity, Some(DriftAction::MarginCalc))?;
-
-        (
-            quote_oracle_price_data.price,
-            quote_spot_market
-                .historical_oracle_data
-                .last_oracle_price_twap_5min,
-        )
-    };
-    }
-}
-
+'Program dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH success', 'Program dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH invoke [1]', 'Program log: Instruction: PlacePerpOrder', 'Program log: oracle pubkey not found in oracle_map: 5SSkXsEKQepHHAewytPVwdej4epN1nxgLVM84L4KXgy7', 'Program log: AnchorError occurred. Error Code: OracleNotFound. Error Number: 6036. Error Message: OracleNotFound.'
 ```
 ```
-The error statement "Could not find spot market 0 at .." loads from
-programs/drift/src/state/spot_market_map.rs:35, where it should instead come from
-programs/drift/src/state/perp_market_map.rs:70 -> return Err(ErrorCode::SpotMarketNotFound);
-programs/drift/src/math/margin.rs:554
-
+Unsure why it occurs as the address is a valid devnet address

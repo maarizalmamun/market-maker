@@ -1,6 +1,9 @@
 venv/
 .env
-sample_mm.py
-zdeleted/
 src/__pycache__/
 src/strategies/__pycache__/
+data/archived/dlob/*
+data/archived/market/*
+data/archived/user/*
+zdeleted/
+src/strategies/base_strategy.py

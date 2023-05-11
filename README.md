@@ -31,12 +31,7 @@ python src/main.py
 As there's still bugs and its not fully operational, the POST error (as shown below) can be better analyzed with the default scripts, my modified one that requires no additional terminal prompts and the original.
 
 ```python
-The error statement "Could not find spot market 0 at .." loads from
-programs/drift/src/state/spot_market_map.rs:35, where it should instead come from SpotMarketNotFound
-programs/drift/src/state/perp_market_map.rs:70 -> return Error(ErrorCode::SpotMarketNotFound);
-found at
-programs/drift/src/math/margin.rs:554
-Run:
+'Program log: Instruction: PlacePerpOrder', 'Program log: oracle pubkey not found in oracle_map: 5SSkXsEKQepHHAewytPVwdej4epN1nxgLVM84L4KXgy7', 'Program log: AnchorError occurred. Error Code: OracleNotFound.
 ```
 python floating_maker_simplified.py
 ```

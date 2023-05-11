@@ -157,16 +157,16 @@ def format_dlob(dlob: list[dict] = read_javascript_data('dlob')) -> dict:
     """
     dlob = read_javascript_data('dlob')
     updated_dlob = update_prices(dlob)
-    updated_dlob = filter_orders(dlob, 'limit')
-    filtered_longs = filter_orders(dlob, 'long')
-    filtered_shorts = filter_orders(dlob,'short')
+    updated_dlob = filter_orders(dlob, "limit",'orderType')
+    filtered_longs = filter_orders(updated_dlob, 'long', 'direction')
+    filtered_shorts = filter_orders(updated_dlob,'short', 'direction')
     sorted_longs = sorted(filtered_longs, key=lambda x: x['price'], reverse=True)
     sorted_shorts = sorted(filtered_shorts, key=lambda x: x['price'])
     return {
         'best_bid': sorted_longs[0]['price'],
         'best_ask': sorted_shorts[0]['price'],
-        'long_orderbook': create_order_book(sorted_longs, 0.05),
-        'short_orderbook': create_order_book(sorted_shorts, 0.05),
+        'long_orderbook': create_order_book(sorted_longs, 0.1),
+        'short_orderbook': create_order_book(sorted_shorts, 0.1),
         'long_orders': sorted_longs,
         'short_orders': sorted_shorts
     }
@@ -215,7 +215,7 @@ def read_archived_data(data_category: str) -> dict:
     with open(path, 'r') as f: data = json.load(f)
     return data
     
-def delete_oldest_archived():
+def delete_oldest_archived(buffer, storage_maxed):
     """Deletes oldest file in each subdirectory of data/archived.
 
     Deletes the oldest file in each subdirectory of `data/archived`, which includes 'dlob', 'user', and 'market'. 
@@ -223,10 +223,11 @@ def delete_oldest_archived():
 
     Raises:
         FileNotFoundError: If any of the subdirectories in `data/archived` do not exist.
-    """    
-    for data in ['dlob','user','market']:
-        delete_archived_data(data)
-        print("Oldest archived {data} deleted. Back up or increase storage")
+    """
+    if buffer % STORAGE_BUFFER == 0 and storage_maxed: 
+        for data in ['dlob','user','market']:
+            delete_archived_data(data)
+            print("Oldest archived {data} deleted. Back up or increase storage")
 
 def delete_archived_data(data_category: str):
     """Deletes the latest archive data file for given data category.
@@ -269,9 +270,9 @@ def archive_data(data: dict):
         data_category = 'user'
     elif keyword_in_data(data,['mark', 'spread','twap', 'volume']): 
         data_category = 'market'
-    elif keyword_in_data(data,['direction','orderId','orderType']): 
+    elif keyword_in_data(data,['orderbook']): 
         data_category = 'dlob'
-    else:         
+    else:
         raise ValueError("Invalid data dictionary for archiving.")
     #Timestamping and storage
     time_str = time.strftime('%y%m%d-%H:%M')
@@ -322,11 +323,11 @@ def make_data_readable(data: Union[dict, list]) -> Union[dict, list]:
             data[key] /= QUOTE_PRECISION
         elif "mark" in key or "oracle" in key or "spread" in key or "price" in key:
             data[key] /= PRICE_PRECISION
-        elif "bid_price_twap" in key or "ask_price_twap" in key:
+        elif "bid_price_twap" in key or "ask_price_twap" in key or "collateral" in key:
             data[key] /= PRICE_PRECISION
     return data
 
-def create_order_book(sorted_orders: list[dict], order_tick_size: float = 0.05) -> dict:
+def create_order_book(sorted_orders: list[dict], order_tick_size: float = 0.1) -> dict:
     """
     Creates an order book from a list of sorted orders.
 
@@ -341,9 +342,9 @@ def create_order_book(sorted_orders: list[dict], order_tick_size: float = 0.05) 
     for order in sorted_orders:
         #Round shorts up, Longs round down
         if order['direction'] == 'short':
-            group = (order['price']+ order_tick_size) // order_tick_size * order_tick_size
+            group = ((order['price']+ order_tick_size) // order_tick_size) * order_tick_size
         else:
-            group = order['price']  // order_tick_size * order_tick_size
+            group = ((order['price']+order_tick_size/100)//order_tick_size) * order_tick_size
         if group not in order_book:
             order_book[str(group)] = {'price': group, 'quantity': order['baseAssetAmount']}
         order_book[str(group)]['quantity'] += order['baseAssetAmount']
@@ -372,7 +373,7 @@ def choose_strategy() -> str:
     strategy_files = []
     # File exclusion list, print remaining files
     for filename in os.listdir(path):
-        if "cache" not in filename and "init" not in filename:
+        if "cache" not in filename and "init" not in filename and "base" not in filename:
             strategy_files.append(filename)
         if "default" in filename:
             default_file = filename 
@@ -452,16 +453,15 @@ def print_all_data(dlob_data: list[dict], user_data: dict, market_data: dict):
     """
     
     sum = len(dlob_data['long_orderbook']) + len(dlob_data['short_orderbook'])
-    console_line()
-    print("OrderBook: \n")
-    print("Highest orderbook bid: ", f"{dlob_data['best_bid']:.3f}",
-     "Lowest orderbook ask: ", f"{dlob_data['best_ask']:.3f}, # Orders: {sum}")
+    print("OrderBook:")
+    print("Highest bid: ", f"{dlob_data['best_bid']:.3f}",
+     "Lowest ask: ", f"{dlob_data['best_ask']:.3f}, # Limit Orders: {sum}")
     print("\nOrderbook Bids:"), print_ob(dlob_data['long_orderbook'])
-    print("\nOrderbook Asks:"), print_ob(dlob_data['short_orderbook']) 
-    print("\nTop long_orders:"), print_orders(dlob_data['long_orders'])
-    print("Top short_orders:\n"), print_orders(dlob_data['short_orders'])   
-    print("\nMarket Maker User Data: \n", user_data) 
-    print(MARKET_NAME," Market Data:\n", market_data)
+    print("Orderbook Asks:"), print_ob(dlob_data['short_orderbook']) 
+    console_line()   
+    print("Market Maker User Data: \n", user_data) 
+    console_line()
+    print(MARKET_NAME,"Market Data:\n", market_data)
     console_line()
 
 def print_orders(dlob: list[dict], maxprints: int = 3):
@@ -476,19 +476,24 @@ def print_orders(dlob: list[dict], maxprints: int = 3):
         else:
             print(order,'\n')
 
-def print_ob(order_book):
+def print_ob(order_book, max_print: int = 5):
     """Prints order book to console.
 
     Args:
         order_book (dict): The dictionary that represents the data for the order book.
+        max_print (int): Maximum orderbook items printed to console
     """
+    counter = 0
     for key, value in order_book.items():
+        if counter == max_print:
+            break
         if type(value['price']) == float:
             p = f"{value['price']:.2f}"
             q = f"{value['quantity']:.2f}"
             c_q = f"{value['cumulative_quantity']:.2f}"
             print(f"price: {p}, quantity: {q}, cumulative_quantity: {c_q}")
         else: print(value)
+        counter += 1
 
 def console_line() -> None:
     """Prints separator line in console"""
