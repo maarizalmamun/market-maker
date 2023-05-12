@@ -147,15 +147,50 @@ class DriftClient:
         """
         free_collateral = total_collateral - liability
         if total_collateral == 0: user_leverage = 0
-        else: user_leverage = liability * 10_000 / total_collateral
-
+        else: user_leverage = liability / total_collateral
         user_data = {"user_position": user_position, "user_leverage": user_leverage,
             "total_collateral": total_collateral, "free_collateral": free_collateral,
              "unrealized_pnl": unrealized_pnl, "perp_liability": liability
         }
-        return user_data
+        if user_data["user_position"] != None:
+            perp_position_data =  self.extract_perp_position_data(user_data["user_position"])
+            user_data["user_position"] = True
+            new_user_data = {**user_data, **perp_position_data}
+            return new_user_data
+        else:
+            return user_data
 
-    def extract_market_data(self, perp_market, oracle_data) -> dict:
+    def extract_perp_position_data(self, perp_position: PerpPosition) -> dict:
+        """Returns a dictionary containing useful data from a PerpPosition object.
+
+        Args:
+            perp_position (PerpPosition): The PerpPosition object to extract data from.
+
+        Returns:
+            dict[str, any]: A dictionary containing selected data from the PerpPosition object.
+                - last_cumulative_funding_rate (int): The last cumulative funding rate.
+                - base_asset_amount (int): The amount of base asset.
+                - quote_asset_amount (int): The amount of quote asset.
+                - quote_break_even_amount (int): The break-even amount of quote asset.
+                - quote_entry_amount (int): The entry amount of quote asset.
+                - open_bids (int): The number of open bids.
+                - open_asks (int): The number of open asks.
+                - settled_pnl (int): The settled profit and loss.
+                - open_orders (int): The number of open orders.
+        """
+        perp_position_data = {
+            "last_cumulative_funding_rate": perp_position.last_cumulative_funding_rate,
+            "base_asset_amount": perp_position.base_asset_amount,
+            "quote_asset_amount": perp_position.quote_asset_amount,
+            "quote_break_even_amount": perp_position.quote_break_even_amount,
+            "quote_entry_amount": perp_position.quote_entry_amount,
+            "open_bids": perp_position.open_bids,
+            "open_asks": perp_position.open_asks,
+            "settled_pnl": perp_position.settled_pnl,
+        }
+        return perp_position_data
+
+    def extract_market_data(self, perp_market, oracle_data: OracleData = None) -> dict:
         """Returns a dictionary containing useful market data from a PerpMarket object.
         Args:
             None.

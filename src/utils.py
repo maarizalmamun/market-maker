@@ -278,7 +278,11 @@ def archive_data(data: dict):
     time_str = time.strftime('%y%m%d-%H:%M')
     filename = f'{data_category}-{time_str}.json'
     path = os.path.join(data_dir_path(),'archived', data_category, filename)
-    with open(path, 'w') as f: json.dump(data, f)
+    try: 
+        with open(path, 'w') as f: json.dump(data, f)
+    except:
+        raise TypeError("There is an error with: ", type(data) )
+
     print(f"{data_category} data archived")
     
 def keyword_in_data(data, keywords: list[str]) -> bool:
@@ -321,9 +325,9 @@ def make_data_readable(data: Union[dict, list]) -> Union[dict, list]:
             data[key] /= FUNDING_RATE_PRECISION
         elif "quote" in key:
             data[key] /= QUOTE_PRECISION
-        elif "mark" in key or "oracle" in key or "spread" in key or "price" in key:
-            data[key] /= PRICE_PRECISION
-        elif "bid_price_twap" in key or "ask_price_twap" in key or "collateral" in key:
+        elif("mark" in key or "oracle" in key or "spread" in key or "price" in key
+            or "twap" in key or "pnl" or "collateral" in key or "liability" in key
+            ):
             data[key] /= PRICE_PRECISION
     return data
 

@@ -68,7 +68,7 @@ async def main(keypath, consolePrint):
     total_collateral = []
     storage = (buffer, storage_maxed, total_collateral)
     # Display initialized accounts on Solana devnet
-    user_acc_key = driftclient.get_accounts(True,consolePrint)['user_account'].__str__()
+    user_acc_key = driftclient.get_accounts(True,consolePrint)['user_account']
     # Initialize Market Maker Algorithm
     strategyClass = choose_strategy()
     #2 Market Maker Loop Begins
@@ -194,7 +194,7 @@ def handle_archives(dlob_data, user_data, market_data, storage, storage_frequenc
         print(f"TradeCount: {buffer+1}, Data Storage Maxed: {storage_maxed}")
         if buffer % COLLECTION_FREQUENCY ==0:
             archive_dataset([dlob_data,user_data,market_data])
-            generate_graph()
+            #generate_graph()
         buffer = (buffer+1) % STORAGE_BUFFER
         if buffer == 0 and not storage_maxed: 
                 total_collateral.append(user_data['total_collateral'])

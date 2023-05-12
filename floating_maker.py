@@ -15,9 +15,7 @@ from driftpy.clearing_house import ClearingHouse
 from driftpy.constants.numeric_constants import BASE_PRECISION, PRICE_PRECISION
 from borsh_construct.enum import _rust_enum
 
-from src.utils import extractKey
-import re
-#from extractkey import extractKey
+from extractkey import extractKey
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -26,20 +24,6 @@ class PostOnlyParams:
     NONE = constructor()
     TRY_POST_ONLY = constructor()
     MUST_POST_ONLY = constructor()
-
-def extractKey(base58str) -> bytes:
-    """
-    Private Key: TypeConversion from (base58,string) to (base64, bytes)
-
-    Args:
-        base58str (str): The private key as a base58 encoded string.
-
-    Returns:
-        bytes: The private key as a base64 encoded bytes.
-    """    
-    from solders.keypair import Keypair
-    kp = Keypair.from_base58_string(base58str)
-    return kp.__bytes__()
 
 def order_print(orders: list[OrderParams], market_str=None):
     for order in orders:
@@ -68,15 +52,8 @@ async def main(
     spread = .01,
     offset = 0,
 ):
-    with open(os.path.expanduser(keypath), 'r') as f: secret = json.load(f)
-    
-    #Check if private key is base64 or base58. Extract key accordingly
-    base58check = re.compile('[g-zG-Z]')
-    is_base58 = base58check.search(secret['secretKey']) 
-
-    #Base58 calls helper function to convert to Base64. Else handle accordingly 
-    if is_base58: kp = Keypair.from_secret_key(extractKey(secret['secretKey']))
-    else: kp = Keypair.from_secret_key(bytes(secret))
+    with open(os.path.expanduser(keypath), 'r') as f: secret = json.load(f) 
+    kp = Keypair.from_secret_key(extractKey(secret['secretKey']))
     print('using public key:', kp.public_key, 'subaccount=', subaccount_id)
     config = configs[env]
     wallet = Wallet(kp)
@@ -130,12 +107,12 @@ async def main(
     if is_perp:
         perp_orders_ix = [
             await drift_acct.get_place_perp_order_ix(bid_order_params, subaccount_id),
-            #await drift_acct.get_place_perp_order_ix(ask_order_params, subaccount_id)
+            await drift_acct.get_place_perp_order_ix(ask_order_params, subaccount_id)
             ]
     else:
         spot_orders_ix =  [
             await drift_acct.get_place_spot_order_ix(bid_order_params, subaccount_id),
-            #await drift_acct.get_place_spot_order_ix(ask_order_params, subaccount_id)
+            await drift_acct.get_place_spot_order_ix(ask_order_params, subaccount_id)
         ]
 
     await drift_acct.send_ixs(
@@ -184,6 +161,5 @@ if __name__ == '__main__':
         args.spread,
         args.offset,
     ))
-
 
 
