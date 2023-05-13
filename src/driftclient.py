@@ -3,7 +3,7 @@ import json
 import copy
 import re
 import asyncio
-from typing import Dict
+from typing import Dict, Any, Union
 
 from anchorpy import Wallet
 from anchorpy import Provider
@@ -131,14 +131,14 @@ class DriftClient:
         market_data = self.extract_market_data(perp_market, oracle_data)
         return user_data, market_data
 
-    def extract_user_data(self, total_collateral, liability, unrealized_pnl, user_position) -> dict:
+    def extract_user_data(self, total_collateral, liability, unrealized_pnl, user_position: Union[PerpMarket, None]) -> dict:
         """
         Fetches user trade data, including total collateral, perp 
         liability, unrealized profit and loss, and user position
         for the current market.
         Returns:
         dict: A dictionary containing user trade data, including:
-            - 'user_position' (float): The user's current position in the market.
+            - 'user_position' Union[PerpMarket, None]: The user's current position in the market.
             - 'user_leverage' (float): The user's current leverage.
             - 'total_collateral' (float): The user's total collateral in their account.
             - 'free_collateral' (float): The user's free collateral in their account.
@@ -146,18 +146,22 @@ class DriftClient:
             - 'perp_liability' (float): The user's perp liability.
         """
         free_collateral = total_collateral - liability
-        if total_collateral == 0: user_leverage = 0
-        else: user_leverage = liability / total_collateral
-        user_data = {"user_position": user_position, "user_leverage": user_leverage,
+        if total_collateral == 0: 
+            user_leverage = 0
+        else: 
+            user_leverage = liability / total_collateral
+
+        user_data = {"user_position": bool, "user_leverage": user_leverage,
             "total_collateral": total_collateral, "free_collateral": free_collateral,
              "unrealized_pnl": unrealized_pnl, "perp_liability": liability
         }
-        if user_data["user_position"] != None:
-            perp_position_data =  self.extract_perp_position_data(user_data["user_position"])
-            user_data["user_position"] = True
+        if user_position != None:
+            perp_position_data =  self.extract_perp_position_data(user_position)
             new_user_data = {**user_data, **perp_position_data}
+            new_user_data["user_position"] = True
             return new_user_data
         else:
+            user_data["user_position"] = False
             return user_data
 
     def extract_perp_position_data(self, perp_position: PerpPosition) -> dict:
@@ -190,10 +194,11 @@ class DriftClient:
         }
         return perp_position_data
 
-    def extract_market_data(self, perp_market, oracle_data: OracleData = None) -> dict:
+    def extract_market_data(self, perp_market: PerpMarket, oracle_data: OracleData = None) -> dict:
         """Returns a dictionary containing useful market data from a PerpMarket object.
         Args:
-            None.
+            perp_market (PerpMarket): PerpMarket object
+            oracle_data (OracleData): OracleData object
         Returns:
             Dict: A dictionary containing selected data from the PerpMarket object.
                 - oracle_price (float): The current oracle price.
@@ -215,7 +220,7 @@ class DriftClient:
         amm = perp_market.amm
         perp_data = {
             "oracle_price": oracle_data.price,
-            "has_sufficient_number_of_datapoints": oracle_data.has_sufficient_number_of_datapoints,
+            "has_sufficient_number_of_datapoints": bool(oracle_data.has_sufficient_number_of_datapoints),
             "last_oracle_price": amm.historical_oracle_data.last_oracle_price,
             "last_oracle_price_twap": amm.historical_oracle_data.last_oracle_price_twap,
             "last_mark_price_twap": amm.last_mark_price_twap,
@@ -230,30 +235,7 @@ class DriftClient:
             "long_spread": amm.long_spread,
             "short_spread": amm.short_spread
         }        
-        return perp_data
-        """
-        perp_market = await get_perp_market_account(self.chu.program, self.market_index)
-        amm = perp_market.amm
-        oracle_data = await get_oracle_data(self.drift_acct.program.provider.connection, amm.oracle)
-        
-        perp_data = {
-            "oracle_price": oracle_data.price,
-            "has_sufficient_number_of_datapoints": oracle_data.has_sufficient_number_of_datapoints,
-            "last_oracle_price": amm.historical_oracle_data.last_oracle_price,
-            "last_oracle_price_twap": amm.historical_oracle_data.last_oracle_price_twap,
-            "last_mark_price_twap": amm.last_mark_price_twap,
-            "last_bid_price_twap": amm.last_bid_price_twap,
-            "last_ask_price_twap": amm.last_ask_price_twap,
-            "last_funding_rate": amm.last_funding_rate,
-            "last24h_avg_funding_rate": amm.last24h_avg_funding_rate,
-            "volume24h": amm.volume24h,
-            "oracle_std": amm.oracle_std,
-            "mark_std": amm.mark_std,
-            "base_spread": amm.base_spread,
-            "long_spread": amm.long_spread,
-            "short_spread": amm.short_spread
-        }
-        """
+        return perp_data        
 
 class MMOrder:
     """Represents an order that has been placed on the exchange.
@@ -277,18 +259,10 @@ class MMOrder:
         direction: PositionDirection = PositionDirection.LONG(),
         order_type: OrderType = OrderType.LIMIT(),
         market_name: str = MARKET_NAME,
-        oracle_price_offset= 0,
-        spread: float = 0.02, #10bps from 20
-        offset: float = 0.00
+        oracle_price_offset: float = 0,
     ):
         params = get_market_parameters(MARKET_NAME)
-        if oracle_price_offset == 0: 
-            if PositionDirection.LONG():
-                oracle_offset = int((offset - spread/2) * PRICE_PRECISION)
-            else:
-                oracle_offset = int((offset + spread/2) * PRICE_PRECISION)
 
-        else: oracle_offset = oracle_price_offset * PRICE_PRECISION
         self.orderparams = OrderParams(
             order_type,
             market_type=params['market_type'],
@@ -302,13 +276,12 @@ class MMOrder:
             immediate_or_cancel=False,
             trigger_price=0,
             trigger_condition=OrderTriggerCondition.ABOVE(),
-            oracle_price_offset= oracle_offset,
+            oracle_price_offset= int(oracle_price_offset * PRICE_PRECISION),
             auction_duration=None,
             max_ts=None,
             auction_start_price=None,
             auction_end_price=None,
         )
-
 
 class Orders:
     """Class for managing orders on the exchange.
@@ -322,22 +295,17 @@ class Orders:
         self.drift_acct = drift_acct
         self.orders = []
         self.oracle_price = oracle_price
+        self.ixs = []
         
     def add_order(self, order: MMOrder):
         self.orders.append(order)
 
     async def send_orders(self):
         """ Places perp orders to market from list of orders stored in Orders object"""
-        orders_ix = []
         for order in self.orders:
             ix = await self.drift_acct.get_place_perp_order_ix(order.orderparams)
-            orders_ix.append(ix)
-
-        await self.drift_acct.send_ixs(
-        [
-        await self.drift_acct.get_cancel_orders_ix(0),
-        ] + orders_ix
-    )
+            self.ixs.append(ix)
+        await self.drift_acct.send_ixs(self.ixs)
 
     def order_print(self):
         """ Print orders to console  """
@@ -352,9 +320,11 @@ class Orders:
                     pricestr += (' - '+str(abs(order.oracle_price_offset)/PRICE_PRECISION))
             else:
                 pricestr = '$' + str(order.price/1e6)
+            pricestr += " = " + f"{self.oracle_price + order.oracle_price_offset/PRICE_PRECISION:.4f}"
             print(str(order.direction).split('.')[-1].replace('()',''),
             f"{order.base_asset_amount/BASE_PRECISION:.3f}", MARKET_NAME, '@', pricestr
             )
+
 
     async def user_margin_enabled(self) -> bool:
         """ Check if margin trading enabled"""

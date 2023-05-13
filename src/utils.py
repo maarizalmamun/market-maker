@@ -116,7 +116,6 @@ def read_javascript_data(data_name: str) -> list[dict]:
 
     Returns:
         list[dict]: The specified JSON file as a list of dictionaries.
-
     """  
     path = os.path.join(data_dir_path(), data_name + '.json')
     with open(path, 'r') as f: js_data = json.load(f)
@@ -157,7 +156,7 @@ def format_dlob(dlob: list[dict] = read_javascript_data('dlob')) -> dict:
     """
     dlob = read_javascript_data('dlob')
     updated_dlob = update_prices(dlob)
-    updated_dlob = filter_orders(dlob, "limit",'orderType')
+    updated_dlob = filter_orders(updated_dlob, "limit",'orderType')
     filtered_longs = filter_orders(updated_dlob, 'long', 'direction')
     filtered_shorts = filter_orders(updated_dlob,'short', 'direction')
     sorted_longs = sorted(filtered_longs, key=lambda x: x['price'], reverse=True)
@@ -206,7 +205,8 @@ def read_archived_data(data_category: str) -> dict:
     Raises:
         Exception: If the input data category is not one of ['user','market','dlob'].
         Exception: If there are no files in the archive for the given data category.
-        Exception: If there was a problem reading the data from the file.    """    
+        Exception: If there was a problem reading the data from the file.    
+    """    
     if not data_category in ['user','market','dlob']: 
         raise Exception("RequestError: f{data_category} not read")
     path = os.path.join(data_dir_path(),'archived', data_category)
@@ -319,16 +319,16 @@ def make_data_readable(data: Union[dict, list]) -> Union[dict, list]:
             readable_data.append(make_data_readable(i))
         return readable_data
     for key in data:
-        if ("base" in key or "volume" in key) and not "spread" in key:
+        if ("base" in key or "volume" in key or "open" in key) and not "spread" in key:
             data[key] /= BASE_PRECISION
         elif "fund" in key:
             data[key] /= FUNDING_RATE_PRECISION
         elif "quote" in key:
             data[key] /= QUOTE_PRECISION
         elif("mark" in key or "oracle" in key or "spread" in key or "price" in key
-            or "twap" in key or "pnl" or "collateral" in key or "liability" in key
-            ):
+            or "twap" in key or "pnl" in key or "collateral" in key or "liability" in key):
             data[key] /= PRICE_PRECISION
+        else: continue
     return data
 
 def create_order_book(sorted_orders: list[dict], order_tick_size: float = 0.1) -> dict:
@@ -460,12 +460,14 @@ def print_all_data(dlob_data: list[dict], user_data: dict, market_data: dict):
     print("OrderBook:")
     print("Highest bid: ", f"{dlob_data['best_bid']:.3f}",
      "Lowest ask: ", f"{dlob_data['best_ask']:.3f}, # Limit Orders: {sum}")
-    print("\nOrderbook Bids:"), print_ob(dlob_data['long_orderbook'])
-    print("Orderbook Asks:"), print_ob(dlob_data['short_orderbook']) 
+    #print("\nOrderbook Bids:"), print_ob(dlob_data['long_orderbook'])
+    #print("Orderbook Asks:"), print_ob(dlob_data['short_orderbook']) 
     console_line()   
-    print("Market Maker User Data: \n", user_data) 
+    print("Market Maker User Data: \n", user_data)
+    print(type(user_data['user_position']))
     console_line()
     print(MARKET_NAME,"Market Data:\n", market_data)
+    print(type(market_data['has_sufficient_number_of_datapoints']))
     console_line()
 
 def print_orders(dlob: list[dict], maxprints: int = 3):
@@ -499,6 +501,10 @@ def print_ob(order_book, max_print: int = 5):
         else: print(value)
         counter += 1
 
-def console_line() -> None:
+def console_line(toPrint=True) -> str:
     """Prints separator line in console"""
-    print('------------------------------------------------------------------')
+    line = '------------------------------------------------------------------'
+    if toPrint:
+        print(line)
+    else:
+        return line

@@ -10,8 +10,9 @@ sys.path.append(str(base_path.parent))
 from src import *
 from driftclient import Orders, MMOrder, DriftClient
 from driftpy.types import *
+from driftpy.constants.numeric_constants import BASE_PRECISION,PRICE_PRECISION, QUOTE_PRECISION,PEG_PRECISION, FUNDING_RATE_PRECISION
 
-from utils import fetch_javascript_json
+from utils import fetch_javascript_json, console_line
 
 """ LV 1 MARKET MAKER - RISK MANAGEMENT FIXED/BINARY"""
 # BASE PARAMETERS
@@ -20,6 +21,7 @@ MAX_LEVERAGE  = 2.0
 AGGRESSION  = 0.001 
 MAX_ORDERS = 3
 AGG_SKEW = [0.8, 1.01]
+TARGET_SKEW = 0.1
 # BASE DERISK/UPRISK THRESHOLDS (% OF LIMIT)
 DERISK_TARGET = 0.8
 DERISK_LEVERAGE = 0.8
@@ -49,7 +51,7 @@ class DefaultStrategy():
         strat_complexity (int): The complexity of the strategy.
 
     Methods:
-        get_userpositions: Get user's long and short positions.
+        open_quantity_orders: Get user's long and short position sizes.
         calculate_risk: Calculate the current level of risk.
         calculate_funding_adjustment: Calculate the funding adjustment factor.
         calculate_skew_factor: Calculate the skew factor.
@@ -79,188 +81,227 @@ class DefaultStrategy():
             accaddress (str): User account public address.
             custom_signals (Any): Any custom signal parameters for optional extendible market making data.
         """
-        self.dlob_data = dlob_data
-        self.user_data = user_data
-        self.market_data = market_data
+
         self.drift_acct = drift_acct
         self.custom_signals = custom_signals
         self.strat_complexity: int = 1
 
         # RISK VARS
-        self.targetcap = MAX_TARGET
         self.levcap = MAX_LEVERAGE
+        self.targetcap = MAX_TARGET#/self.oracle_price
         self.agg = AGGRESSION
         self.funding_rate = market_data['last_funding_rate']
-        self.address = accaddress
+        self.address = str(accaddress)
         self.derisk = DERISK_TARGET
         self.uprisk = UPRISK_TARGET
         self.agg_skew = AGG_SKEW
+        self.target_skew = TARGET_SKEW
+        self.target_skew = TARGET_SKEW
         self.max_orders = MAX_ORDERS
-        self.oracle_price = self.dlob_data['long_orders'][0]['oracle_price']
-        self.mark_price = (self.dlob_data['best_bid'] + self.dlob_data['best_ask'])/2
 
-        # BASE VARS
-        try:
-            self.user_position: user_data['user_position']
-            self.activeTrades = True
-            self.current_leverage = user_data['leverage']
-            self.total_collateral = user_data['total_collateral']
-            self.risk = calculate_risk()
-        except:
+        # MARKET VARS
+        self.oracle_price = market_data['oracle_price']
+        self.mark_price = (dlob_data['best_bid'] + dlob_data['best_ask'])/2
+        self.long_orders = dlob_data['long_orders']
+        self.short_orders = dlob_data['short_orders']
+        self.best_bid = dlob_data['best_bid']
+        self.best_ask = dlob_data['best_ask']
+
+        # USER VARS
+        self.active_position = user_data['user_position']
+        self.current_leverage = user_data['user_leverage']
+        self.total_collateral = user_data['total_collateral']
+        self.unrealized_pnl = user_data['unrealized_pnl']
+
+        if user_data['user_position']:
+            self.user_position = user_data['base_asset_amount']
+            self.liability = user_data["perp_liability"]
+            self.risk = self.calculate_risk()
+            self.open_bids_sum = user_data['open_bids']
+            self.open_asks_sum = user_data['open_asks']
+            self.open_bids, self.open_asks = self.open_quantity_orders()
+            self.realized_pnl = user_data['settled_pnl']
+        else:
             print("No position yet. Time to enter the market!")
-            self.user_position = None
-            self.activeTrades = False
-            self.current_leverage  = 0
-            self.total_collateral = None
+            self.user_position = 0
             self.risk = 0
+            self.liability = 0
+            self.open_bids = 0
+            self.open_asks = 0
+            self.open_bids_sum = 0
+            self.open_asks_sum = 0
+            self.realized_pnl = 0
 
-    def get_userpositions(self) -> list[float]:
-        """Get user's long and short positions
+    def __str__(self) -> str:
+        """
+        Return a formatted string representation of the object's attributes.
+
+        Returns:
+            str: A string representation of the object's attributes.
+        """
+        return(
+            f"{console_line(False)}\n"
+            f"Strategy Parameters:\n"
+            f"Custom Signals:              {self.custom_signals}\n"
+            f"Strategy Complexity:         {self.strat_complexity}\n"
+            f"Max Leverage:                {self.levcap}\n"
+            f"Max Target Size:             {self.targetcap} USD\n"
+            f"Aggression:                  {self.agg*100:.2f} %\n"
+            f"Funding Rate:                {self.funding_rate*100:.2f} %\n"
+            f"Derisk Factor:               {self.derisk}\n"
+            f"Uprisk Factor:               {self.uprisk}\n"
+            f"Aggression Skew Factor:      {self.agg_skew}\n"
+            f"Max Orders:                  {self.max_orders} (Per Side)\n"
+            f"{console_line(False)}\n"
+            f"User Trade Data:\n"
+            f"User Account Public Address: {self.address}\n"
+            f"Active Position?             {self.active_position}\n"
+            f"Position Size:               {self.user_position} SOL\n"
+            f"Current Leverage:            {self.current_leverage:.2f}\n"
+            f"Total Position Liability:    {self.liability:.2f} USD\n"
+            f"Risk:                        {self.risk*100:.2f} %\n"
+            f"Unrealized P&L:              {self.unrealized_pnl:.2f} USD\n"
+            f"Realized P&L:                {self.realized_pnl:.2f} USD\n"
+            f"Open Bids:                   {self.open_bids}\n"
+            f"Open Asks:                   {self.open_asks}\n"
+            f"Open Bids Total Size:        {self.open_bids_sum} SOL\n"
+            f"Open Asks Total Size:        {self.open_asks_sum} SOL\n"
+            f"Total Collateral:            {self.total_collateral:.2f} USD\n"
+            f"{console_line(False)}\n"
+            f"Market Conditions:\n"
+            f"Oracle Price:                {self.oracle_price:.2f} USD\n"
+            f"DLOB Mark Price:             {self.mark_price:.2f} USD\n"
+            f"{console_line(False)}"
+        )
+
+    def open_quantity_orders(self) -> list[float]:
+        """Get user's long and short open order sizes
         
         Returns:
-            List[float]: User open order Bid and Asks, quantity and amount
-                [num_long_trades,num_short_trades],[sum_long_trades, sum_short_trades]
+            list[float]: Long and short open order sizes
         """
-        if self.activeTrades == False:
-            return [[0,0],[0,0]]
+        if self.active_position == False:
+            return [0,0]
         else:
-            user_order_count = [0,0]
-            user_order_size = [0,0]
-            for order in self.dlob_data['long_orderbook']:
+            user_order_quantity = [0,0]
+            for order in self.long_orders:
                 if self.address == order["user"]:
-                    user_order_size[0] += order["baseAssetAmount"]
-                    user_order_count[0] += 1
-            for order in self.dlob_data['short_orderbook']:
+                    user_order_quantity[0] += 1
+            for order in self.short_orders:
                 if self.address == order["user"]:
-                    user_order_size[1] += order["baseAssetAmount"]
-                    user_order_count[1] += 1
-            print("User positions are:", user_order_count, user_order_size)
-            return [user_order_count, user_order_size]  
+                    user_order_quantity[1] += 1
+            return user_order_quantity  
 
     def calculate_risk(self) -> float:
-        """
-        Calculate current position's level of risk based on given 
-        risk management parameters
+        """Calculate current position's risk level based on risk management parameters
         
         Returns:
-            float: Current position % to max risk threshold (goal[0.3,0.8])
+            float: Current position distance to max risk threshold ideally between [0.3,0.8], range of [0,1]
         """
-        risk =  max(self.current_leverage/self.levcap, self.total_collateral/self.targetcap)      
-        print("risk is: ", risk)
+        risk =  max(self.current_leverage/self.levcap, (self.liability/self.targetcap) * 0.8)      
         return risk
 
-    def calculate_funding_adjustment(self) -> int:
-        """Main factor to determine which way position skew lies
+    def calculate_funding_adjustment(self) -> float:
+        """Skew adjustment factor based on current and expected funding rates
         
         Returns:
-            int: Positive indicates funding favors shorts,
-                 Negative indicates funding favors longs.
+            float: Negative indicates funding favors shorts,
+                   Positive indicates funding favors longs.
+                   Range: [-1,1]
+                    -1 or +1 indicating clear funding bias, 
+                    0.5 if funding rate is 0 but mark - oracle != 0
         """
+        
         if self.funding_rate > 0 and self.oracle_price < self.mark_price:
-            return 1.0
-        elif self.funding_rate < 0 and self.oracle_price > self.mark_price:
             return -1.0
+        elif self.funding_rate < 0 and self.oracle_price > self.mark_price:
+            return 1.0
         elif self.oracle_price < self.mark_price:
-            return 0.5
-        elif self.oracle_price > self.mark_price:
             return -0.5
+        elif self.oracle_price > self.mark_price:
+            return 0.5
         else:
             return 0.0
 
     def calculate_skew_factor(self) -> float:
-        """Calculates skew that can vary from -1 to 1.
-           In our case, it ranges from -0.5 to 0.5.
+        """Calculates order placement skew, where positive skews to long order and vice versa
         
         Returns:
-            float: Skew value between -0.5 and 0.5.
+            float: Skew value for order placement
+                   Value Range: between -0.75 to 0.75.
+                   funding adjustment adds upto +/- 0.25
+                   risk adjustment adds upto +/- 0.5
         """
-        # Funding adjustment
-        skew = float(calculate_funding_adjustment()) * 0.25
-
-        # Risk mode: Derisk position
+        skew = float(self.calculate_funding_adjustment()) * 0.25
         if self.risk > self.uprisk:
             # Risk adjustment
             if self.user_position > 0:
-                skew += -0.5
+                skew -= 0.5
             else:
                 skew += 0.5
         return skew
 
     def calculate_aggression_factor(self) -> list[float]:
-        """Calculate aggression based on the current state of the market.
+        """Calculate aggression based on funding rates and current position risk
         
         Returns:
             list[float]: Aggression factors for bid and ask orders.
         """
         funding = self.funding_rate
+        aggression_factor = [self.agg, self.agg]
+        # Normal conditions: Risk under Uprisk Factor
         if (self.risk < self.uprisk):
-            if funding == 0:
-                return [1.0,1.0]
-            if self.risk > self.derisk:
-                # Normal conditions, not in derisk or uprisk mode
-                if funding > 0:
-                    return [1 - funding*abs(1- self.agg_skew[0]), 1 + funding*abs(1- self.agg_skew[1])]
-                else:
-                    return [1 + funding*abs(1- self.agg_skew[0]), 1 - funding*abs(1- self.agg_skew[1])]
+            # Favour shorts: tighten longs loosen shorts
+            if funding > 0:
+                aggression_factor = ([self.agg * self.agg_skew[0] * (1 - funding),
+                    self.agg * self.agg_skew[1] * (1 + funding)]
+                )
+            # Favour longs: loosen longs tighten shorts
+            elif funding < 0:
+                aggression_factor = ([self.agg * self.agg_skew[1] * (1 - funding), 
+                    self.agg * self.agg_skew[0] * (1 + funding)]
+                )
             else:
-                # Lowrisk mode: increase risk by tightening aggression by 25%
-                if funding > 0:
-                    return [1 - funding*abs(1- self.agg_skew[0])*0.75, 1 + funding*abs(1- self.agg_skew[1])*0.75]
-                else:
-                    return [1 + funding*abs(1- self.agg_skew[0])*0.75, 1 - funding*abs(1- self.agg_skew[1])*0.75]            
+                return aggression_factor
+
+        # Risk above Risk Factor Threshold: Loosen aggression on side of risk (Increase aggression by 1.8-2.0x)
         else:
-            # Highrisk mode: decrease risk by loosening aggression to 200% of risk side
             if self.user_position > 0:
-                return [2.0,1.0]
+                aggression_factor = [self.agg * (1.0 + self.risk), self.agg]
             else:
-                return [1.0,2.0]    
+                aggression_factor = [self.agg, self.agg * (1.0 + self.risk)]
+        return aggression_factor   
 
     def calculate_ordersize(self) -> list[float,float]:
-        """Use parabolic spacing to calculate order sizes.
+        """Calculate bid and ask order sizes factoring in skew
+        and converting Target size in USD to asset size
         
         Returns:
             list[float, float]: Sizes for long and short orders.
         """
-        if self.activeTrades == False:
+        if self.active_position == False:
             return [self.targetcap, self.targetcap]
-        user_order_count = [0,0]
-        user_order_size = [0,0]
-        if self.activeTrades == True:
-            for order in self.dlob_data['long_orderbook']:
-                if self.address == order["user"]:
-                    user_order_size[0] += order["baseAssetAmount"]
-                    user_order_count[0] += 1
-            for order in self.dlob_data['short_orderbook']:
-                if self.address == order["user"]:
-                    user_order_size[1] += order["baseAssetAmount"]
-                    user_order_count[1] += 1
-        print("User positions are:", user_order_count, user_order_size)
-        user_positions = self.get_userpositions()
-        sum_long_trades = user_positions[1][0]
-        sum_short_trades = user_positions[1][1]
-        
-        # Calculate Target Size - Active Trade sum with skew adjustment
-        skew = calculate_skew_factor() 
-        base_target_long = (self.targetcap - sum_long_trades)*(1.0 + skew)
-        base_target_short = (self.targetcap - sum_short_trades)*(1.0 - skew)
-        print("Skew is: ", skew, "Base Target Long and shorts are:", base_target_long, base_target_short)
+
+        # Convert target cap from USD to asset quantity
+        target_cap_asset = float(self.targetcap)/self.oracle_price        
+        skew = self.calculate_skew_factor() 
+
+        base_target_long = (target_cap_asset - self.open_bids_sum -
+            self.user_position)*(1.0 + skew * self.target_skew)
+        base_target_short = (target_cap_asset + self.open_asks_sum + 
+            self.user_position)*(1.0 - skew * self.target_skew)
         return [base_target_long, base_target_short]
 
     def calculate_order_params(self) -> list[list[float]]:
-        """Calculate the spacing between the orders to be posted on the market.
+        """Calculate order sizes, quantity and offset.
+            Spacing between the orders and sizes use quadratic spacing.
         
         Returns:
             list[list[float]]: Order sizes and offsets for bid and ask orders.
         """        
-        bidagg = self.agg * self.calculate_aggression_factor()[0]
-        askagg = self.agg * self.calculate_aggression_factor()[1]        
-        if(self.activeTrades == False):
-            bidnum = 3
-            asknum = 3
-        else:
-            bidnum = self.max_orders - self.get_userpositions[0][0]
-            asknum = self.max_orders - self.get_userpositions[0][1]
-        # Total base quantity of longs and shorts to post
+        bid_agg, ask_agg = self.calculate_aggression_factor()
+        bidnum = max(0,self.max_orders - self.open_bids)
+        asknum = max(0,self.max_orders - self.open_asks)
         bid_sizes = []
         ask_sizes = []
         bid_offsets = []
@@ -270,22 +311,20 @@ class DefaultStrategy():
         bid_divider = 1
         ask_divider = 1
         counter = 1
-        base_target_long = self.calculate_ordersize()[0]
-        base_target_short = self.calculate_ordersize()[1]
-        print(f"Number of long Orders: = {bidnum}, Number of Short Orders: = {asknum}")
+        base_target_long, base_target_short = self.calculate_ordersize()
         denominator = 0
         for i in range(1, bidnum+1):
             denominator += i        
         while counter <= bidnum:
             bid_sizes.append(counter/denominator)
-            bid_offsets.append(bidagg*(counter/denominator))
+            bid_offsets.append((bid_agg*(counter/denominator))*self.oracle_price)
             counter += 1
         counter = 1
         for i in range(1, asknum+1):
             denominator += i 
         while counter <= asknum:
             ask_sizes.append(counter/denominator)
-            ask_offsets.append(askagg*(counter/denominator))
+            ask_offsets.append((ask_agg*(counter/denominator))*self.oracle_price)
             counter += 1
 
         for b in range(bidnum):
@@ -294,38 +333,69 @@ class DefaultStrategy():
             ask_sizes[a] = base_target_short * ask_sizes[a]
         return[[bid_sizes,bid_offsets],[ask_sizes,ask_offsets]]  
 
-    def post_orders(self) -> Orders:    
+    async def post_orders(self) -> Orders:    
         """Post orders on the market. Returns a list of orders.
         
         Returns:
             Orders: An instance of the Orders class representing the orders to be placed.
         """        
         buy_order_params, sell_order_params = self.calculate_order_params()
-        if len(buy_order_params[0]) == 0:
+        orders = Orders(self.drift_acct, self.oracle_price)
+        if len(buy_order_params[0]) == 0 and len(sell_order_params[0]) == 0:
             return None
-        else:
-        # Create Orders Object to prepare order placement
-            orders = Orders(self.drift_acct, self.oracle_price)
-            """Order class initialized with instance of ClearingHouse"""
-            for i in range(len(buy_order_params[0])):
-                base_amt = buy_order_params[0][i]
+
+        # Handle trapped position by tightening aggression of opposite side
+        elif len(buy_order_params[0]) == 0 or len(sell_order_params[0]) == 0:
+            ix = await self.drift_acct.get_cancel_orders_ix()
+            orders.ixs.append(ix)
+            # Cancel and recalculate positions
+            buy_order_params, sell_order_params = self.calculate_order_params()
+        print(f"Number of long Orders: = {len(buy_order_params[0])},Number of Short Orders: = {len(sell_order_params[0])}")
+        """Order class initialized with instance of ClearingHouse"""
+        for i in range(len(buy_order_params[0])):
+            base_amt = buy_order_params[0][i]
+            offset = buy_order_params[1][i]
+            if base_amt < 0.1:
+                base_amt = 0.1
                 offset = buy_order_params[1][i]
-                order = MMOrder(direction=PositionDirection.LONG(),
-                order_size=base_amt,offset=offset)
-                orders.add_order(order)
-            for i in range(len(sell_order_params[0])):
-                base_amt = sell_order_params[0][i]
-                offset = -sell_order_params[1][i]
-                order = MMOrder(direction=PositionDirection.SHORT(),
-                order_size=base_amt,offset=offset)
-                orders.add_order(order)
-            return orders
+                continue
+            order = MMOrder(direction=PositionDirection.LONG(),
+            order_size=base_amt, oracle_price_offset = -offset
+            )
+            orders.add_order(order)
+        for i in range(len(sell_order_params[0])):
+            base_amt = sell_order_params[0][i]
+            offset = sell_order_params[1][i]
+            if base_amt < 0.1:
+                base_amt = 0.1
+                offset = sell_order_params[1][i]
+            order = MMOrder(direction=PositionDirection.SHORT(),
+            order_size=base_amt, oracle_price_offset = offset
+            )
+            orders.add_order(order)
+        return orders
         
-    def emergency_market_order_condition(self) -> bool:
+    async def emergency_market_order_condition(self) -> bool:
         """Check if an emergency market order condition is met.
         
         Returns:
             bool: True if the condition is met, False otherwise.
         """
-        if self.risk > 0.9:
+        if self.risk > 0.98:
+            coroutines = [self.drift_acct.cancel_orders(), self.drift_acct.close_position()]
+            await asyncio.gather(*coroutines)
+            print("Risk threshold exceeded: Forcing market exit")
             return True
+        else:
+            return False
+
+    async def force_close_positions(self) -> True:
+        """Force market close of current position, cancel orders
+        
+        Returns:
+            bool: True if the condition is met, False otherwise.
+        """
+        coroutines = [self.drift_acct.cancel_orders(), self.drift_acct.close_position()]
+        print("User requested to end program: Forcing market exit")
+        await asyncio.gather(*coroutines)
+        return True

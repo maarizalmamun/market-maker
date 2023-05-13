@@ -20,35 +20,25 @@ pip install -r requirements.txt
 ```
 ## Quick Run
 
-It is assumed ANCHOR_WALLET=path/to/id.json already configured.
-If not, find your private key and place it in a .env file in the root directory.
+Your Solana private key (either base58 string or base64 bytes) can be placed in .env in main directory with ANCHOR_WALLET=path/to/id.json
+If not, when running the main.py file specify the path to your private key json file via --keypath.
 
 Running the following command and you will be prompted to choose between running from different strategies in src/strategies. You will be prompted to select a number but any key diverts to default, the only implemented (for now)
+
+add --keypath [path name] to command to specify location of private key
+add --console [yes/true or no/false] to specify if you'd like detailed console messages regarding DLOB, Market and User data fetched from drifpy.
 ```
 python src/main.py
 ```
 
-As there's still bugs and its not fully operational, the POST error (as shown below) can be better analyzed with the default scripts, my modified one that requires no additional terminal prompts and the original.
+The bot is currently live, below is a sample pic from 5 hours of use while fixing some final bugs in the market logic. 
+![Image Alt Text](trading_result_graph.png)
+[Block Explorer](https://explorer.solana.com/address/81mEWGuceyAhPH6GZjX8jcXETrrcGMYzJUBCgsiu7f4W?cluster=devnet)
 
-```python
-'Program log: Instruction: PlacePerpOrder', 'Program log: oracle pubkey not found in oracle_map: 5SSkXsEKQepHHAewytPVwdej4epN1nxgLVM84L4KXgy7', 'Program log: AnchorError occurred. Error Code: OracleNotFound.
-```
-python floating_maker_simplified.py
-```
-or:
+[Drift Beta Exchange Link](https://beta.drift.trade/overview/history/tradeHistory?userAccount=81mEWGuceyAhPH6GZjX8jcXETrrcGMYzJUBCgsiu7f4W)
+
 ```
 python floating_maker.py --amount .1 --market SOL-PERP
-```
-
-post two maker orders for SOL/USDC on mainnet with subaccount_id = 2
-
-```
-python floating_maker.py --amount .69 --market SOL --env mainnet --subaccount 2
-```
-
-stake 1 USDC (market_index=0) to drift v2 insurance fund (on devnet, also default)
-```
-python if_stake.py --operation add --amount 1 --market 0 --env devnet
 ```
 
 ## Disclaimer

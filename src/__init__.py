@@ -14,7 +14,7 @@ DEV_MODE = False
 """bool: Whether the code is currently running in development mode. Use archived data to reduce runtime"""
 
 # TRADING, SAMPLING, AND DELETION PERIODS
-TRADE_FREQUENCY = 12
+TRADE_FREQUENCY = 10
 """int: The frequency (in seconds) at which the code should attempt to place trades."""
 
 COLLECTION_FREQUENCY = 5

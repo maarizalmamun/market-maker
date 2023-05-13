@@ -17,18 +17,27 @@ import {
 import dotenv from 'dotenv';
 import fs from 'fs';
 import bs58 from 'bs58';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 const env = 'devnet';
-dotenv.config({path: ('./../.env')});
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Construct the absolute path to the .env file
+const pathToEnv = join(__dirname, '..', '.env');
+
+
+// Load the environment variables
+dotenv.config({ path: pathToEnv });
 /* 
 This code uses the template from sdk/src/examples/loadDlob.ts
 And modifies it to read, filter, and store data from
 dlob.getDLOBOrders()
 */
-
 const main = async () => {
-	
 	// Initialize Drift SDK
+	console.log(__dirname)
 	const sdkConfig = initialize({ env });
 	
     // Load privatekey
@@ -117,8 +126,9 @@ const main = async () => {
 	// Store DLOB in data directory
 	const data = JSON.stringify(ourDLOB);
 	const userOrderData = JSON.stringify(userOrders)
-    const filename = './../data/dlob.json';
-    const filename2 = './../data/userorders.json';
+	const pathToDataDir = join(__dirname, '..','data/');
+    const filename = join(__dirname, '..','data/','dlob.json');
+    const filename2 = join(__dirname, '..','data/','userorders.json');
 	create_JSON(filename, data);
 	create_JSON(filename2,userOrderData);
 	//console.log('Unsubscribing users...');

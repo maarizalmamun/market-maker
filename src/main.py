@@ -60,50 +60,57 @@ async def main(keypath, consolePrint):
         d) Loop to 2a)
     3. Exit call
     """
-    #1 Initialize connection
+    #1 Initialize connection to Drift API
     driftclient = DriftClient(keypath)
     on = True
     buffer = 0
     storage_maxed = False
     total_collateral = []
     storage = (buffer, storage_maxed, total_collateral)
-    # Display initialized accounts on Solana devnet
+    # Display Initialized accounts on Solana devnet
     user_acc_key = driftclient.get_accounts(True,consolePrint)['user_account']
     # Initialize Market Maker Algorithm
     strategyClass = choose_strategy()
     #2 Market Maker Loop Begins
     while on:
 
-        # Fetch, Format, Collect Data
-        dlob_data, user_data, market_data = await collect_and_format_data(driftclient, consolePrint)
-        # Handle data archiving and Graph Generation
+        dlob_data, user_data, market_data = await fetch_and_format_data(driftclient, consolePrint)
         storage = handle_archives(dlob_data, user_data, market_data, storage)
-        # Load Fetched data to Strategy algorithm
+        # Load fetched data to Strategy algorithm
         strategy = strategyClass(dlob_data,user_data,market_data,
-            driftclient.drift_acct,driftclient.drift_acct.get_user_account_public_key())
-        # Calculate order and execute trade according to strategy
-        await make_trade(strategy)
-
+            driftclient.drift_acct,
+            driftclient.drift_acct.get_user_account_public_key()
+        )
+        on = await make_trade(strategy, consolePrint)
         if DEV_MODE or not on:
             break
-    print("Program Completes!")
+    print("Market Making activity has reached completion")
 
-async def make_trade(strategy):
+async def make_trade(strategy, consolePrint) -> bool:
     """Execute a trade using the specified strategy.
 
     Args:
         strategy: The strategy object to use for trading.
 
     """
-    marketMakerOrders = strategy.post_orders()
-    if marketMakerOrders != None:
-        print(marketMakerOrders.order_print())
-        await marketMakerOrders.send_orders()
-    else:
-        print("No new trades to be made.")
+    if consolePrint: 
+        print(strategy)
+    emergency_stop = await strategy.emergency_market_order_condition()
+    # Risk Management limit reached, forced market exit and program exit
+    if emergency_stop:
+        return False
+    else: 
+        marketMakerOrders = await strategy.post_orders()
+        if marketMakerOrders != None:
+            print(marketMakerOrders.order_print())
+            await marketMakerOrders.send_orders()
+            return True
+        else:
+            print("No new trades to be made.")
+            return True
 
 
-async def collect_and_format_data(driftclient: DriftClient, consolePrint: bool, trade_freq: int = TRADE_FREQUENCY):
+async def fetch_and_format_data(driftclient: DriftClient, consolePrint: bool, trade_freq: int = TRADE_FREQUENCY):
     """ Fetches DLOB, User, and market data dictionaries from 
         Driftpy and Drift Javascript SDK. Data formatted and prepared for trading
         operations. Batches asyncronous retrieval times with trade_freq to 
@@ -194,7 +201,7 @@ def handle_archives(dlob_data, user_data, market_data, storage, storage_frequenc
         print(f"TradeCount: {buffer+1}, Data Storage Maxed: {storage_maxed}")
         if buffer % COLLECTION_FREQUENCY ==0:
             archive_dataset([dlob_data,user_data,market_data])
-            #generate_graph()
+            generate_graph()
         buffer = (buffer+1) % STORAGE_BUFFER
         if buffer == 0 and not storage_maxed: 
                 total_collateral.append(user_data['total_collateral'])
@@ -220,7 +227,8 @@ if __name__ == '__main__':
     consolePrint = args.console.lower()
     if 'n' in args.console.lower() or 'f' in args.console.lower():
         consolePrint = False
-    else:
+    elif 'y' in args.console.lower() or 't' in args.console.lower():
         consolePrint = True
-
+    else:
+        consolePrint = False
     asyncio.run(main(args.keypath, consolePrint))

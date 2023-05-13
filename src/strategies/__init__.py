@@ -72,10 +72,10 @@ else:
         TRADE_FREQ_ADJUST_ON: bool
         """Boolean value indicating whether the trade frequency adjustment factor is enabled."""
 
-        COLLECT_DATA_ADJUST_ON: bool
+        FETCH_DATA_ADJUST_ON: bool
         """Boolean value indicating whether the data collection frequency adjustment factor is enabled."""
 
-        COLLECTION_BUFFER_ADJUST_ON: bool
+        FETCH_BUFFER_ADJUST_ON: bool
         """Boolean value indicating whether the data buffer size adjustment factor is enabled."""
 
         """ LV 3 MARKET MAKER - MARKET SIGNALS FROM PRICE DATA
