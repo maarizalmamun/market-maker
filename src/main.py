@@ -95,10 +95,11 @@ async def make_trade(strategy, consolePrint) -> bool:
     """
     if consolePrint: 
         print(strategy)
-    emergency_stop = await strategy.emergency_market_order_condition()
+    #emergency_stop = await strategy.emergency_market_order_condition()
     # Risk Management limit reached, forced market exit and program exit
-    if emergency_stop:
-        return False
+    #if emergency_stop:
+    #    return False
+    if False: pass
     else: 
         marketMakerOrders = await strategy.post_orders()
         if marketMakerOrders != None:

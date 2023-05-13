@@ -2,6 +2,7 @@ import sys
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List
 from pathlib import Path
+import asyncio
 
 base_path = Path(__file__).resolve().parent
 print(base_path)
@@ -267,9 +268,9 @@ class DefaultStrategy():
         # Risk above Risk Factor Threshold: Loosen aggression on side of risk (Increase aggression by 1.8-2.0x)
         else:
             if self.user_position > 0:
-                aggression_factor = [self.agg * (1.0 + self.risk), self.agg]
+                aggression_factor = [self.agg * (1.0 + self.risk)*2, self.agg]
             else:
-                aggression_factor = [self.agg, self.agg * (1.0 + self.risk)]
+                aggression_factor = [self.agg, self.agg * (1.0 + self.risk)*2]
         return aggression_factor   
 
     def calculate_ordersize(self) -> list[float,float]:
@@ -292,7 +293,7 @@ class DefaultStrategy():
             self.user_position)*(1.0 - skew * self.target_skew)
         return [base_target_long, base_target_short]
 
-    def calculate_order_params(self) -> list[list[float]]:
+    def calculate_order_params(self, bids: int = 0, asks: int = 0) -> list[list[float]]:
         """Calculate order sizes, quantity and offset.
             Spacing between the orders and sizes use quadratic spacing.
         
@@ -300,8 +301,8 @@ class DefaultStrategy():
             list[list[float]]: Order sizes and offsets for bid and ask orders.
         """        
         bid_agg, ask_agg = self.calculate_aggression_factor()
-        bidnum = max(0,self.max_orders - self.open_bids)
-        asknum = max(0,self.max_orders - self.open_asks)
+        bidnum = max(bids,self.max_orders - self.open_bids)
+        asknum = max(asks,self.max_orders - self.open_asks)
         bid_sizes = []
         ask_sizes = []
         bid_offsets = []
@@ -341,15 +342,41 @@ class DefaultStrategy():
         """        
         buy_order_params, sell_order_params = self.calculate_order_params()
         orders = Orders(self.drift_acct, self.oracle_price)
-        if len(buy_order_params[0]) == 0 and len(sell_order_params[0]) == 0:
+
+        # Handle accidental case where max orders made:
+        if self.open_bids > self.max_orders or self.open_asks > self.max_orders:
+            await self.drift_acct.cancel_orders(0)
+            await asyncio.sleep(1)
+            buy_order_params, sell_order_params = self.calculate_order_params()
+
+        # Max orders opened both sides
+        elif self.open_bids == self.max_orders and self.open_asks == self.max_orders:
             return None
 
         # Handle trapped position by tightening aggression of opposite side
         elif len(buy_order_params[0]) == 0 or len(sell_order_params[0]) == 0:
+            """
+            if self.open_asks == 0:
+                if self.user_position > 0:
+                    await self.drift_acct.cancel_orders(0)
+                    await asyncio.sleep(1)                   
+                    buy_order_params, sell_order_params = self.calculate_order_params()              
+                else:
+                    pass
+
+            elif self.open_bids == 0:
+                if self.user_position < 0:
+                    await self.drift_acct.cancel_orders(0)
+                    await asyncio.sleep(1)                   
+                    buy_order_params, _ = self.calculate_order_params()              
+                else:
+                    pass
+            """
             ix = await self.drift_acct.get_cancel_orders_ix()
             orders.ixs.append(ix)
-            # Cancel and recalculate positions
-            buy_order_params, sell_order_params = self.calculate_order_params()
+            #Cancel and recalculate positions
+            buy_order_params, sell_order_params = self.calculate_order_params(3,3)
+
         print(f"Number of long Orders: = {len(buy_order_params[0])},Number of Short Orders: = {len(sell_order_params[0])}")
         """Order class initialized with instance of ClearingHouse"""
         for i in range(len(buy_order_params[0])):
@@ -382,7 +409,7 @@ class DefaultStrategy():
             bool: True if the condition is met, False otherwise.
         """
         if self.risk > 0.98:
-            coroutines = [self.drift_acct.cancel_orders(), self.drift_acct.close_position()]
+            coroutines = [self.drift_acct.cancel_orders(), self.drift_acct.close_position(0)]
             await asyncio.gather(*coroutines)
             print("Risk threshold exceeded: Forcing market exit")
             return True
@@ -395,7 +422,7 @@ class DefaultStrategy():
         Returns:
             bool: True if the condition is met, False otherwise.
         """
-        coroutines = [self.drift_acct.cancel_orders(), self.drift_acct.close_position()]
+        coroutines = [self.drift_acct.cancel_orders(), self.drift_acct.close_position(0)]
         print("User requested to end program: Forcing market exit")
         await asyncio.gather(*coroutines)
         return True

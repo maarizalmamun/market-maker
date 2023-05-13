@@ -122,7 +122,9 @@ const main = async () => {
 
 	// Create JSON for orders from User Account
 	let userAddress = (await driftClient.getUserAccountPublicKey()).toBase58();
-	const userOrders = ourDLOB.filter(order => order.user === userAddress);
+	const userOrders = ourDLOB.filter(order => {
+		return order.user === userAddress;
+	});
 	// Store DLOB in data directory
 	const data = JSON.stringify(ourDLOB);
 	const userOrderData = JSON.stringify(userOrders)
