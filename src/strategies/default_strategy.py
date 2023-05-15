@@ -102,11 +102,14 @@ class DefaultStrategy():
 
         # MARKET VARS
         self.oracle_price = market_data['oracle_price']
-        self.mark_price = (dlob_data['best_bid'] + dlob_data['best_ask'])/2
-        self.long_orders = dlob_data['long_orders']
-        self.short_orders = dlob_data['short_orders']
         self.best_bid = dlob_data['best_bid']
         self.best_ask = dlob_data['best_ask']
+        try:
+            self.mark_price = (dlob_data['best_bid'] + dlob_data['best_ask'])/2
+        except:
+            self.mark_price = market_data['oracle_price']
+        self.long_orders = dlob_data['long_orders']
+        self.short_orders = dlob_data['short_orders']
 
         # USER VARS
         self.active_position = user_data['user_position']
@@ -233,7 +236,7 @@ class DefaultStrategy():
                    funding adjustment adds upto +/- 0.25
                    risk adjustment adds upto +/- 0.5
         """
-        skew = float(self.calculate_funding_adjustment()) * 0.25
+        skew = float(self.calculate_funding_adjustment()) * 0.1
         if self.risk > self.uprisk:
             # Risk adjustment
             if self.user_position > 0:

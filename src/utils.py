@@ -47,6 +47,7 @@ from solana.publickey import PublicKey
 from driftpy.constants.config import configs
 from driftpy.constants.numeric_constants import BASE_PRECISION, PRICE_PRECISION, QUOTE_PRECISION, PEG_PRECISION, FUNDING_RATE_PRECISION
 import importlib
+import threading
 
 import sys
 from pathlib import Path
@@ -161,15 +162,24 @@ def format_dlob(dlob: list[dict] = read_javascript_data('dlob')) -> dict:
     filtered_shorts = filter_orders(updated_dlob,'short', 'direction')
     sorted_longs = sorted(filtered_longs, key=lambda x: x['price'], reverse=True)
     sorted_shorts = sorted(filtered_shorts, key=lambda x: x['price'])
-    return {
+    if len(sorted_shorts) > 0:
+        return {
         'best_bid': sorted_longs[0]['price'],
         'best_ask': sorted_shorts[0]['price'],
         'long_orderbook': create_order_book(sorted_longs, 0.1),
         'short_orderbook': create_order_book(sorted_shorts, 0.1),
         'long_orders': sorted_longs,
         'short_orders': sorted_shorts
-    }
-
+        }
+    else:
+        return {
+        'best_bid': sorted_longs[0]['price'],
+        'best_ask': None,
+        'long_orderbook': create_order_book(sorted_longs, 0.1),
+        'short_orderbook': create_order_book(sorted_shorts, 0.1),
+        'long_orders': sorted_longs,
+        'short_orders': sorted_shorts
+        }
 
 # Archived Data Helper Functions
 def read_archived_dataset() -> list[dict]:
@@ -383,9 +393,9 @@ def choose_strategy() -> str:
             default_file = filename 
     for i, filename in enumerate(strategy_files):
         print(f"{i+1}. {filename}")
-    selection = input("Select strategy # to implement (Press any key for default): ")
+    selection = input_with_timeout("Select strategy # to implement (Press any key for default): ", 10.0)
     # Check for out of scope inputs, set to default
-    if not selection.isdigit() or int(selection) < 1 or int(selection) > len(strategy_files):
+    if selection is None or not selection.isdigit() or int(selection) < 1 or int(selection) > len(strategy_files):
         filename = default_file
     else: 
         filename = strategy_files[int(selection)-1]
@@ -395,6 +405,29 @@ def choose_strategy() -> str:
     module = importlib.import_module(f'strategies.{module_name}')
     strategy_class = getattr(module, 'DefaultStrategy')
     return strategy_class
+
+def input_with_timeout(prompt, timeout=10.0):
+    """
+    Wait for input from the user, but timeout if no response in given time.
+
+    Args:
+        prompt (str): The prompt for the user.
+        timeout (float): The number of seconds to wait for input.
+
+    Returns:
+        The user input, or None if no input was given before the timeout.
+    """
+    result = [None]  # Use a mutable object so the function can modify it.
+
+    def get_input():
+        result[0] = input(prompt)
+
+    thread = threading.Thread(target=get_input)
+    thread.start()
+    thread.join(timeout)
+
+    return result[0]
+
 
 def update_prices(orders: list[dict]) -> list[dict]:
     """
@@ -458,8 +491,12 @@ def print_all_data(dlob_data: list[dict], user_data: dict, market_data: dict):
     
     sum = len(dlob_data['long_orderbook']) + len(dlob_data['short_orderbook'])
     print("OrderBook:")
-    print("Highest bid: ", f"{dlob_data['best_bid']:.3f}",
-     "Lowest ask: ", f"{dlob_data['best_ask']:.3f}, # Limit Orders: {sum}")
+    try:
+        print("Highest bid: ", f"{dlob_data['best_bid']:.3f}",
+        "Lowest ask: ", f"{dlob_data['best_ask']:.3f}, # Limit Orders: {sum}")
+    except:
+        print("Highest bid: ", f"{dlob_data['best_bid']:.3f}",
+        "Lowest ask: ", f"{dlob_data['best_ask']}, # Limit Orders: {sum}")       
     #print("\nOrderbook Bids:"), print_ob(dlob_data['long_orderbook'])
     #print("Orderbook Asks:"), print_ob(dlob_data['short_orderbook']) 
     console_line()   

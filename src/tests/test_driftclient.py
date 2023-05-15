@@ -59,4 +59,75 @@ async def test_get_driftuser_data():
     await test_driftclient.get_driftuser_data()
 
 x = asyncio.run(test_driftclient.get_market_data())
-print(x)
+
+"""
+
+import unittest
+import asyncio
+from unittest.mock import MagicMock, patch
+from src.driftclient import DriftClient, MMOrder, Orders
+from driftpy.clearing_house import ClearingHouse
+from driftpy.clearing_house_user import ClearingHouseUser
+
+class TestDriftClient(unittest.TestCase):
+    @patch('src.driftclient.ClearingHouse')
+    @patch('src.driftclient.ClearingHouseUser')
+    def setUp(self, mock_chu, mock_ch):
+        self.keypath = "dummy_path"
+        self.client = DriftClient(self.keypath)
+
+        self.mock_chu = mock_chu
+        self.mock_ch = mock_ch
+
+        self.client.chu = self.mock_chu
+        self.client.drift_acct = self.mock_ch
+
+    def test_get_accounts(self):
+        self.client.get_accounts(printkeys=False)
+        self.assertTrue(self.mock_ch.get_state_public_key.called)
+        self.assertTrue(self.mock_ch.get_user_stats_public_key.called)
+        self.assertTrue(self.mock_ch.get_user_account_public_key.called)
+
+    @patch('src.driftclient.asyncio.gather')
+    @patch('src.driftclient.get_perp_market_account')
+    def test_fetch_chu_data(self, mock_get_perp_market_account, mock_gather):
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(self.client.fetch_chu_data())
+        self.assertTrue(mock_gather.called)
+        self.assertTrue(mock_get_perp_market_account.called)
+
+class TestMMOrder(unittest.TestCase):
+    def setUp(self):
+        self.mmorder = MMOrder()
+
+    def test_init(self):
+        self.assertIsNotNone(self.mmorder.orderparams)
+
+class TestOrders(unittest.TestCase):
+    @patch('src.driftclient.ClearingHouse')
+    def setUp(self, mock_ch):
+        self.orders = Orders(mock_ch)
+
+        self.mock_ch = mock_ch
+
+    def test_add_order(self):
+        mmorder = MMOrder()
+        self.orders.add_order(mmorder)
+        self.assertEqual(len(self.orders.orders), 1)
+
+    @patch('src.driftclient.ClearingHouse.get_place_perp_order_ix')
+    def test_send_orders(self, mock_get_place_perp_order_ix):
+        loop = asyncio.get_event_loop()
+        mmorder = MMOrder()
+        self.orders.add_order(mmorder)
+        loop.run_until_complete(self.orders.send_orders())
+        self.assertTrue(mock_get_place_perp_order_ix.called)
+        self.assertTrue(self.mock_ch.send_ixs.called)
+
+if __name__ == '__main__':
+    unittest.main()
+
+
+
+
+"""

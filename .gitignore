@@ -5,5 +5,7 @@ src/strategies/__pycache__/
 data/archived/dlob/*
 data/archived/market/*
 data/archived/user/*
+data/userorders.json
 zdeleted/
 src/strategies/base_strategy.py
+__pycache__

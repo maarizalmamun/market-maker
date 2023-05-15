@@ -57,7 +57,7 @@ class DriftClient:
         Initializes a DriftClient object.
         """
 
-        #keypath = os.environ.get('ANCHOR_WALLET')
+        keypath = os.environ.get('ANCHOR_WALLET')
         with open(os.path.expanduser(keypath), 'r') as f: secret = json.load(f) 
         
         # Check if private key is of type base64 or base58
